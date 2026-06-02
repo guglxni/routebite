@@ -1,7 +1,7 @@
 # RouteBite Security Audit — OWASP Top 10 (2025)
 
 **Scope:** `apps/api`, `apps/web`, `apps/mock-swiggy`, `packages/db`  
-**Last reviewed:** 2026-06-02  
+**Last reviewed:** 2026-06-03  
 **Status:** Pre-production MVP — suitable for Builders Club demo; address P2 items before scale.
 
 ---
@@ -10,11 +10,11 @@
 
 | # | Category | Risk | Status |
 |---|----------|------|--------|
-| A01 | Broken Access Control | LOW | ✅ Fixed — ownership checks on orders, journeys, intercepts |
+| A01 | Broken Access Control | LOW | ✅ Fixed — ownership checks on orders, journeys, intercepts, railways |
 | A02 | Security Misconfiguration | LOW | ✅ Mitigated — required `ENCRYPTION_KEY`, security headers, CORS via env |
 | A03 | Injection | LOW | ✅ Safe — Drizzle parameterized queries, Zod validation |
-| A04 | Cryptographic Failures | LOW | ✅ Mitigated — AES-256-GCM at rest, TLS in production |
-| A05 | Insecure Design | LOW | ⚠️ In-memory rate limit (OK for MVP) |
+| A04 | Cryptographic Failures | LOW | ✅ Mitigated — AES-256-GCM at rest, NTES AES-128-CBC with manual padding |
+| A05 | Insecure Design | LOW | ⚠️ In-memory rate limit (OK for MVP; bounded + prune added) |
 | A06 | Vulnerable Components | LOW | ✅ Acceptable — lockfile pinned, regular `bun update` recommended |
 | A07 | Auth Failures | LOW | ✅ Mitigated — PKCE OAuth, session hash at rest, token expiry |
 | A08 | Software/Data Integrity | LOW | ✅ Safe — no user-controlled deserialization |
@@ -68,7 +68,22 @@
 ## A05: Insecure Design — ⚠️ ACCEPTABLE FOR MVP
 
 - Rate limiting uses in-memory `Map` — resets on restart, not multi-instance safe
+- **Mitigation (2026-06-03):** Expired rate-limit keys pruned when store exceeds 10k entries
 - **Recommendation:** Redis-backed limiter before horizontal scaling
+
+---
+
+## NTES / Railways integration — ✅ REVIEWED (2026-06-03)
+
+| Control | Implementation |
+|---------|------------------|
+| Auth | `GET /api/v1/railways/*` behind session middleware |
+| Input validation | Train number must match `/^\d{5}$/` before NTES calls |
+| Outbound SSRF | Fixed NTES base URL; user input only in encrypted POST body |
+| Crypto | AES-128-CBC + MD5 signing; `setAutoPadding(false)` matches NTES protocol |
+| Caching | Train run cache TTL 45s, max 200 entries; geocode LRU capped at 512 |
+| Error handling | Failures return `source: 'unavailable'` without leaking stack traces to client |
+| Data minimization | Track API omits Swiggy `raw` payload in `NODE_ENV=production` |
 
 ---
 

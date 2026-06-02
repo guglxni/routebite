@@ -1,6 +1,23 @@
 import { create } from "zustand";
-import type { OrderStatus } from "@routebite/shared/types";
+import type { OrderStatus, VehicleDetails } from "@routebite/shared/types";
 import { getOrderTrack, getOrderTrackingHistory } from "../lib/api";
+
+export interface CustomerContext {
+  transportMode: string;
+  vehicleDetails: VehicleDetails;
+  riderBrief: string;
+  intercept: {
+    id: string;
+    lat: number;
+    lng: number;
+    name?: string;
+    address?: string;
+  };
+  liveLocationSharing: boolean;
+  liveLocation?: { lat: number; lng: number; accuracy?: number; timestamp: number };
+  customerPosition?: { lat: number; lng: number };
+  customerETA?: number;
+}
 
 export interface TrackingSnapshot {
   orderId: string;
@@ -9,6 +26,7 @@ export interface TrackingSnapshot {
   customerETA?: number;
   riderETA?: number;
   riderPosition?: { lat: number; lng: number };
+  customerContext?: CustomerContext | null;
   alignmentStatus: {
     status: string;
     color: string;

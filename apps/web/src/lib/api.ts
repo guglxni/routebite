@@ -5,7 +5,7 @@ import {
   TimingTypeSchema,
   TransportModeSchema,
 } from "@routebite/shared/schemas";
-import type { OrderStatus, ServerType, TimingType } from "@routebite/shared/types";
+import type { GPSPosition, OrderStatus, ServerType, TimingType, VehicleDetails } from "@routebite/shared/types";
 
 const origin = typeof window !== "undefined" ? "" : "http://localhost:8787";
 
@@ -61,6 +61,9 @@ export const InterceptPointSchema = z.object({
   dwellTime: z.number(),
   restaurantCount: z.number(),
   safetyRating: z.number(),
+  name: z.string().optional(),
+  etaSeconds: z.number().optional(),
+  stationCode: z.string().optional(),
 });
 
 export const JourneySchema = z.object({
@@ -128,7 +131,7 @@ export const analyzeRoute = (body: {
   origin: string;
   destination: string;
   transportMode: string;
-  vehicleDetails?: { description: string; plateNumber?: string; color?: string };
+  vehicleDetails?: VehicleDetails;
   validateAddresses?: boolean;
 }) =>
   api<{
@@ -138,6 +141,13 @@ export const analyzeRoute = (body: {
     interceptCount: number;
     hasTolls: boolean;
     weatherWarnings: Array<{ lat: number; lng: number; title: string }>;
+    trainRun?: {
+      trainNumber: string;
+      trainName?: string;
+      startDate: string;
+      stationCount: number;
+      upcomingStops: number;
+    };
   }>("/routes/analyze", { method: "POST", body: {
     ...body,
     vehicleDetails: body.vehicleDetails ?? { description: "RouteBite journey" },
@@ -157,17 +167,94 @@ export const getJourney = (journeyId: string) =>
     routePolyline: string | null;
     routePoints: Array<{ lat: number; lng: number }>;
     interceptCount: number;
+    vehicleDetails?: VehicleDetails | null;
   }>(`/routes/${journeyId}`);
+
+export const patchJourneyTelemetry = (
+  journeyId: string,
+  body: {
+    vehicleDetails?: Partial<VehicleDetails>;
+    liveLocation?: GPSPosition;
+    liveLocationSharing?: boolean;
+  },
+) =>
+  api<{ vehicleDetails: VehicleDetails }>(`/routes/${journeyId}/telemetry`, {
+    method: "PATCH",
+    body,
+  });
+
+export const getTrainLiveStatus = (trainNumber: string) =>
+  api<{
+    trainNumber: string;
+    trainName?: string;
+    lastKnownStation?: string;
+    lastEventAt?: string;
+    delayMinutes?: number;
+    status?: string;
+    currentStationCode?: string;
+    nextStation?: string;
+    platform?: string;
+    startDate?: string;
+    source: "ntes" | "unavailable";
+    fallbackUrl: string;
+    note?: string;
+  }>(`/railways/trains/${trainNumber}/status`);
+
+export const getTrainRun = (trainNumber: string) =>
+  api<{
+    trainNumber: string;
+    trainName?: string;
+    lastKnownStation?: string;
+    delayMinutes?: number;
+    status?: string;
+    nextStation?: string;
+    startDate?: string;
+    source: "ntes" | "unavailable";
+    fallbackUrl: string;
+    note?: string;
+    run: {
+      trainNumber: string;
+      trainName?: string;
+      startDate: string;
+      delayMinutes?: number;
+      currentStationCode?: string;
+      currentStationName?: string;
+      nextStationCode?: string;
+      nextStationName?: string;
+      lastUpdate?: string;
+      stations: Array<{
+        stationCode: string;
+        stationName: string;
+        platform?: string;
+        expectedArrival?: string;
+        expectedDeparture?: string;
+        haltSeconds: number;
+        etaSeconds?: number;
+        passed: boolean;
+        arrivalDelay?: string;
+        departureDelay?: string;
+      }>;
+      updatedAt: string;
+      source: "ntes" | "unavailable";
+      fallbackUrl: string;
+    };
+  }>(`/railways/trains/${trainNumber}/run`);
 
 export const postJourney = (body: {
   originAddress: string;
   destinationAddress: string;
   transportMode: string;
+  vehicleDetails?: VehicleDetails;
+  liveLocationSharing?: boolean;
 }) =>
   analyzeRoute({
     origin: body.originAddress,
     destination: body.destinationAddress,
     transportMode: body.transportMode,
+    vehicleDetails: {
+      ...(body.vehicleDetails ?? { description: "RouteBite journey" }),
+      liveLocationSharing: body.liveLocationSharing,
+    },
   }).then(async (analysis) => {
     const journey = await getJourney(analysis.journeyId);
     return {
@@ -226,6 +313,22 @@ export const getOrderTrack = (id: string) =>
     customerETA?: number;
     riderETA?: number;
     riderPosition?: { lat: number; lng: number };
+    customerContext?: {
+      transportMode: string;
+      vehicleDetails: VehicleDetails;
+      riderBrief: string;
+      intercept: {
+        id: string;
+        lat: number;
+        lng: number;
+        name?: string;
+        address?: string;
+      };
+      liveLocationSharing: boolean;
+      liveLocation?: GPSPosition;
+      customerPosition?: { lat: number; lng: number };
+      customerETA?: number;
+    } | null;
     alignmentStatus: {
       status: string;
       color: string;

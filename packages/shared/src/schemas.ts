@@ -51,9 +51,25 @@ export const GPSPositionSchema = LatLngSchema.extend({
 // ─── Vehicle Schemas ─────────────────────────────────────────────────────────
 
 export const VehicleDetailsSchema = z.object({
-  plateNumber: z.string().optional(),
-  color: z.string().optional(),
+  plateNumber: z.string().max(20).optional(),
+  color: z.string().max(40).optional(),
+  model: z.string().max(80).optional(),
   description: z.string().min(1).max(200),
+  busRouteNumber: z.string().max(40).optional(),
+  busOperator: z.string().max(80).optional(),
+  trainNumber: z.string().regex(/^\d{5}$/, 'Train number must be 5 digits').optional(),
+  trainName: z.string().max(80).optional(),
+  coach: z.string().max(20).optional(),
+  seatBerth: z.string().max(20).optional(),
+  liveLocationSharing: z.boolean().optional(),
+  liveLocation: GPSPositionSchema.optional(),
+  trainRunSnapshot: z
+    .object({
+      startDate: z.string(),
+      trainName: z.string().optional(),
+      updatedAt: z.string(),
+    })
+    .optional(),
 });
 
 // ─── Journey Schemas ─────────────────────────────────────────────────────────

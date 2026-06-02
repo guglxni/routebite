@@ -5,11 +5,15 @@ import { JourneyInputSchema } from '@routebite/shared/schemas';
 import { JOURNEY_CONSTRAINTS } from '@routebite/shared/constants';
 import { mapsClient } from '../services/maps/client';
 import { computeInterceptPoints } from '../services/intercept/algorithm';
+import { buildTrainJourneyPlan, etaForStationIntercept } from '../services/railways/train-journey';
+import { getTrainRun } from '../services/railways/train-run';
+import { parseStationCodeFromLabel } from '../services/railways/ntes/station-code';
 import { RouteBiteError } from '../middleware/error-handler';
 import { getDb } from '@routebite/db/client';
 import { journeys, intercepts } from '@routebite/db/schema';
 import crypto from 'crypto';
 import { eq, and } from 'drizzle-orm';
+import { GPSPositionSchema, VehicleDetailsSchema } from '@routebite/shared/schemas';
 
 const app = new Hono();
 
@@ -40,14 +44,56 @@ app.post('/analyze', zValidator('json', AnalyzeRouteSchema), async (c) => {
     }
   }
 
-  // Compute route
   const departureTime = data.departureTime ? new Date(data.departureTime) : undefined;
-  const route = await mapsClient.computeRoute(
-    originAddress,
-    destAddress,
-    data.transportMode,
-    { departureTime }
-  );
+
+  // Geocode origin/destination for storage
+  const originLL = await mapsClient.geocode(originAddress);
+  const destLL = await mapsClient.geocode(destAddress);
+
+  const user = c.get('user');
+  const db = getDb();
+
+  let route: Awaited<ReturnType<typeof mapsClient.computeRoute>>;
+  let interceptPoints: Awaited<ReturnType<typeof computeInterceptPoints>>;
+  let trainRunSnapshot: Awaited<ReturnType<typeof buildTrainJourneyPlan>>['trainRun'] | undefined;
+
+  // Train + NTES: live schedule/run drives trajectory and station intercepts
+  if (data.transportMode === 'train' && data.vehicleDetails.trainNumber) {
+    const plan = await buildTrainJourneyPlan({
+      trainNumber: data.vehicleDetails.trainNumber,
+      origin: originLL,
+      destination: destLL,
+    });
+
+    trainRunSnapshot = plan.trainRun;
+    interceptPoints = plan.interceptPoints;
+    route = {
+      polylinePoints: plan.routePoints,
+      encodedPolyline: plan.encodedPolyline,
+      distanceMeters: plan.distanceMeters,
+      durationSeconds: plan.durationSeconds,
+      steps: [],
+      hasTolls: false,
+    };
+  } else {
+    route = await mapsClient.computeRoute(originAddress, destAddress, data.transportMode, {
+      departureTime,
+      extraComputations: data.transportMode === 'train' ? false : undefined,
+    });
+
+    interceptPoints = await computeInterceptPoints(
+      {
+        origin: originLL,
+        destination: destLL,
+        transportMode: data.transportMode,
+        routePoints: route.polylinePoints,
+        steps: route.steps,
+      },
+      route,
+      undefined,
+      { snapToRoads: data.transportMode !== 'train', departureTime }
+    );
+  }
 
   const distanceM = route.distanceMeters;
   if (distanceM < JOURNEY_CONSTRAINTS.MIN_DISTANCE_M) {
@@ -59,13 +105,17 @@ app.post('/analyze', zValidator('json', AnalyzeRouteSchema), async (c) => {
 
   const journeyId = `jrn_${crypto.randomBytes(8).toString('hex')}`;
 
-  // Geocode origin/destination for storage
-  const originLL = await mapsClient.geocode(originAddress);
-  const destLL = await mapsClient.geocode(destAddress);
+  const vehiclePayload = trainRunSnapshot
+    ? {
+        ...data.vehicleDetails,
+        trainRunSnapshot: {
+          startDate: trainRunSnapshot.startDate,
+          trainName: trainRunSnapshot.trainName,
+          updatedAt: trainRunSnapshot.updatedAt,
+        },
+      }
+    : data.vehicleDetails;
 
-  // Store journey (scoped to authenticated user)
-  const user = c.get('user');
-  const db = getDb();
   await db.insert(journeys).values({
     id: journeyId,
     userId: user.id,
@@ -76,24 +126,10 @@ app.post('/analyze', zValidator('json', AnalyzeRouteSchema), async (c) => {
     destLat: destLL.lat,
     destLng: destLL.lng,
     transportMode: data.transportMode,
-    vehicleDetailsJson: JSON.stringify(data.vehicleDetails),
+    vehicleDetailsJson: JSON.stringify(vehiclePayload),
     routePolyline: route.encodedPolyline,
     estimatedDuration: route.durationSeconds,
   });
-
-  // Compute intercepts (with road snapping for real-world accuracy)
-  const interceptPoints = await computeInterceptPoints(
-    {
-      origin: originLL,
-      destination: destLL,
-      transportMode: data.transportMode,
-      routePoints: route.polylinePoints,
-      steps: route.steps,
-    },
-    route,
-    undefined,
-    { snapToRoads: true, departureTime }
-  );
 
   const weatherWarnings = interceptPoints
     .filter(p => p.weatherRisk)
@@ -130,6 +166,15 @@ app.post('/analyze', zValidator('json', AnalyzeRouteSchema), async (c) => {
       interceptCount: interceptPoints.length,
       hasTolls: route.hasTolls ?? false,
       weatherWarnings,
+      trainRun: trainRunSnapshot
+        ? {
+            trainNumber: trainRunSnapshot.trainNumber,
+            trainName: trainRunSnapshot.trainName,
+            startDate: trainRunSnapshot.startDate,
+            stationCount: trainRunSnapshot.stations.length,
+            upcomingStops: trainRunSnapshot.stations.filter(s => !s.passed && s.haltSeconds >= 180).length,
+          }
+        : undefined,
     },
   });
 });
@@ -160,6 +205,15 @@ app.get('/:journeyId', async (c) => {
     ? mapsClient.decodePolyline(journey.routePolyline)
     : [];
 
+  let vehicleDetails = null;
+  if (journey.vehicleDetailsJson) {
+    try {
+      vehicleDetails = VehicleDetailsSchema.parse(JSON.parse(journey.vehicleDetailsJson));
+    } catch {
+      vehicleDetails = null;
+    }
+  }
+
   return c.json({
     success: true,
     data: {
@@ -175,6 +229,7 @@ app.get('/:journeyId', async (c) => {
       routePolyline: journey.routePolyline ?? null,
       routePoints,
       interceptCount: interceptRows.length,
+      vehicleDetails,
     },
   });
 });
@@ -201,6 +256,22 @@ app.get('/:journeyId/intercepts', async (c) => {
     .where(eq(intercepts.journeyId, journeyId))
     .all();
 
+  let liveRun: Awaited<ReturnType<typeof getTrainRun>> | undefined;
+  if (journey.transportMode === 'train') {
+    let trainNumber: string | undefined;
+    if (journey.vehicleDetailsJson) {
+      try {
+        const vd = JSON.parse(journey.vehicleDetailsJson) as { trainNumber?: string };
+        trainNumber = vd.trainNumber;
+      } catch {
+        trainNumber = undefined;
+      }
+    }
+    if (trainNumber) {
+      liveRun = await getTrainRun(trainNumber);
+    }
+  }
+
   return c.json({
     success: true,
     data: points.map(p => ({
@@ -213,8 +284,70 @@ app.get('/:journeyId/intercepts', async (c) => {
       restaurantCount: p.restaurantCount ?? 0,
       safetyRating: p.safetyRating ?? 3,
       name: p.name ?? undefined,
+      etaSeconds: liveRun ? etaForStationIntercept(liveRun.run, p.name) : undefined,
+      stationCode: parseStationCodeFromLabel(p.name),
     })),
   });
+});
+
+const TelemetrySchema = z.object({
+  vehicleDetails: VehicleDetailsSchema.partial().optional(),
+  liveLocation: GPSPositionSchema.optional(),
+  liveLocationSharing: z.boolean().optional(),
+});
+
+function mergeVehicleDetails(
+  existingJson: string | null | undefined,
+  patch: z.infer<typeof TelemetrySchema>
+) {
+  let current: Record<string, unknown> = {};
+  if (existingJson) {
+    try {
+      current = JSON.parse(existingJson) as Record<string, unknown>;
+    } catch {
+      current = {};
+    }
+  }
+  if (patch.vehicleDetails) {
+    Object.assign(current, patch.vehicleDetails);
+  }
+  if (patch.liveLocationSharing !== undefined) {
+    current.liveLocationSharing = patch.liveLocationSharing;
+  }
+  if (patch.liveLocation) {
+    current.liveLocation = patch.liveLocation;
+  }
+  return VehicleDetailsSchema.parse({
+    description: (current.description as string) ?? 'RouteBite journey',
+    ...current,
+  });
+}
+
+// PATCH /api/v1/routes/:journeyId/telemetry — live GPS + vehicle profile updates
+app.patch('/:journeyId/telemetry', zValidator('json', TelemetrySchema), async (c) => {
+  const journeyId = c.req.param('journeyId');
+  const user = c.get('user');
+  const body = c.req.valid('json');
+  const db = getDb();
+
+  const journey = await db
+    .select()
+    .from(journeys)
+    .where(and(eq(journeys.id, journeyId), eq(journeys.userId, user.id)))
+    .get();
+
+  if (!journey) {
+    throw new RouteBiteError('NOT_FOUND', 'Journey not found', 404);
+  }
+
+  const merged = mergeVehicleDetails(journey.vehicleDetailsJson, body);
+
+  await db
+    .update(journeys)
+    .set({ vehicleDetailsJson: JSON.stringify(merged) })
+    .where(eq(journeys.id, journeyId));
+
+  return c.json({ success: true, data: { vehicleDetails: merged } });
 });
 
 export default app;

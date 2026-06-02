@@ -12,6 +12,8 @@ import {
   RefreshCw,
   CircleDashed,
   Crosshair,
+  User,
+  Car,
 } from "lucide-react";
 import { useTracking } from "../stores/tracking";
 import CountUp from "~/components/CountUp";
@@ -77,12 +79,18 @@ export default function TrackOrder() {
 
   const alignment = snapshot?.alignmentStatus;
   const rider = snapshot?.riderPosition;
+  const customerContext = snapshot?.customerContext;
+  const customerPosition = customerContext?.customerPosition;
+  const interceptPoint = customerContext?.intercept;
   const hasData = !!(snapshot && snapshot.swiggyOrderId !== null);
 
-  // Render live map with rider position
+  // Render live map with rider + customer + intercept
   const renderLiveMap = () => {
-    const rider = snapshot?.riderPosition;
-    if (!rider) {
+    const riderPos = snapshot?.riderPosition;
+    const intercept = interceptPoint;
+    const fallbackCenter = riderPos ?? customerPosition;
+
+    if (!fallbackCenter && !intercept) {
       return (
         <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
           <MapPin className="mr-1.5 size-4" />
@@ -91,11 +99,32 @@ export default function TrackOrder() {
       );
     }
 
+    const origin = customerPosition ?? intercept ?? fallbackCenter!;
+    const destination = intercept ?? fallbackCenter!;
+
     return (
       <JourneyMap
-        riderPosition={{ lat: rider.lat, lng: rider.lng }}
-        origin={{ lat: rider.lat - 0.02, lng: rider.lng - 0.02 }}
-        destination={{ lat: rider.lat + 0.01, lng: rider.lng + 0.01 }}
+        riderPosition={riderPos ? { lat: riderPos.lat, lng: riderPos.lng } : undefined}
+        customerPosition={customerPosition ?? null}
+        origin={{ lat: origin.lat, lng: origin.lng }}
+        destination={{ lat: destination.lat, lng: destination.lng }}
+        intercepts={
+          intercept
+            ? [
+                {
+                  id: intercept.id,
+                  lat: intercept.lat,
+                  lng: intercept.lng,
+                  type: "dynamic",
+                  score: 100,
+                  dwellTime: 0,
+                  restaurantCount: 0,
+                  safetyRating: 5,
+                  name: intercept.name ?? "Intercept",
+                },
+              ]
+            : []
+        }
         heightClassName="h-full min-h-[320px]"
         className="h-full border-0 rounded-none"
       />
@@ -232,6 +261,43 @@ export default function TrackOrder() {
                 )}
               </div>
             </div>
+
+            {/* Rider sees — delivery partner instructions */}
+            {customerContext && (
+              <div className="track-card glass rounded-2xl p-4 border border-border-subtle">
+                <div className="flex items-center gap-2 mb-2">
+                  <User className="w-4 h-4 text-text-muted" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-text-muted">Rider sees</span>
+                </div>
+                <p className="text-xs text-text-secondary leading-relaxed whitespace-pre-wrap">
+                  {customerContext.riderBrief}
+                </p>
+                {customerContext.vehicleDetails && (
+                  <div className="mt-3 pt-3 border-t border-border-subtle space-y-1.5">
+                    {customerContext.vehicleDetails.plateNumber && (
+                      <div className="flex items-center gap-2 text-xs text-text-secondary">
+                        <Car className="w-3.5 h-3.5 shrink-0" />
+                        <span>{customerContext.vehicleDetails.plateNumber}</span>
+                      </div>
+                    )}
+                    {customerContext.vehicleDetails.trainNumber && (
+                      <div className="flex items-center gap-2 text-xs text-text-secondary">
+                        <span className="font-mono">{customerContext.vehicleDetails.trainNumber}</span>
+                        {customerContext.vehicleDetails.coach && (
+                          <span>· Coach {customerContext.vehicleDetails.coach}</span>
+                        )}
+                      </div>
+                    )}
+                    {customerContext.liveLocationSharing && (
+                      <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald">
+                        <Crosshair className="w-3 h-3" />
+                        Live GPS shared
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Rider position */}
             {rider && (

@@ -177,6 +177,10 @@ foodRouter.post("/*", async (c) => {
       }
 
       const orderId = generateOrderId();
+      const addrs = ensureAddresses(sid);
+      const lastAddr = addrs[addrs.length - 1];
+      const deliveryInstructions = lastAddr?.landmark as string | undefined;
+
       const order = {
         orderId,
         restaurantId: cart.restaurantId,
@@ -186,6 +190,7 @@ foodRouter.post("/*", async (c) => {
         status: "PLACED",
         placedAt: new Date().toISOString(),
         deliveryEta: "30-40 min",
+        deliveryInstructions,
       };
 
       const ords = ensureOrders(sid);
@@ -236,7 +241,12 @@ foodRouter.post("/*", async (c) => {
           status,
           statusText: status.replace(/_/g, " "),
           deliveryPartner: { name: "Ravi K.", phone: "+91-98765-43210", vehicle: "Hero Splendor (DL3S AB 1234)" },
+          delivery_instructions: order.deliveryInstructions,
+          deliveryInstructions: order.deliveryInstructions,
           currentLocation: { lat: 28.61 + Math.random() * 0.01, lng: 77.23 + Math.random() * 0.01 },
+          rider_location: { lat: 28.61 + Math.random() * 0.01, lng: 77.23 + Math.random() * 0.01 },
+          rider_eta: Math.max(300, 1800 - elapsed * 2),
+          customer_eta: Math.max(240, 1500 - elapsed * 2),
           eta: status === "DELIVERED" ? "Delivered" : `${Math.max(5, 30 - Math.floor(elapsed / 60))} min`,
         },
       });

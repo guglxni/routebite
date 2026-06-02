@@ -4,9 +4,18 @@ import { RATE_LIMITS } from '@routebite/shared/constants';
 
 // Simple in-memory rate limiter keyed by IP (use Redis in production)
 const ipStore = new Map<string, { count: number; resetAt: number }>();
+const MAX_STORE_ENTRIES = 10_000;
 
 function getWindowKey(): number {
   return Math.floor(Date.now() / 60000); // 1-minute window
+}
+
+function pruneRateLimitStore(now: number): void {
+  if (ipStore.size <= MAX_STORE_ENTRIES) return;
+  for (const [key, record] of ipStore) {
+    if (record.resetAt <= now) ipStore.delete(key);
+    if (ipStore.size <= MAX_STORE_ENTRIES * 0.8) break;
+  }
 }
 
 export const rateLimitMiddleware = createMiddleware(async (c, next) => {
@@ -32,6 +41,8 @@ export const rateLimitMiddleware = createMiddleware(async (c, next) => {
   } else {
     ipStore.set(key, { count: 1, resetAt: now + 60000 });
   }
+
+  pruneRateLimitStore(now);
 
   await next();
 });

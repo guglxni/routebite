@@ -1,6 +1,6 @@
 import { create } from "zustand";
-import type { TransportMode } from "@routebite/shared/types";
-import { postJourney, getIntercepts } from "../lib/api";
+import type { GPSPosition, TransportMode, VehicleDetails } from "@routebite/shared/types";
+import { getIntercepts, patchJourneyTelemetry, postJourney } from "../lib/api";
 
 export interface Intercept {
   id: string;
@@ -12,6 +12,8 @@ export interface Intercept {
   restaurantCount: number;
   safetyRating: number;
   name?: string;
+  etaSeconds?: number;
+  stationCode?: string;
 }
 
 export interface Journey {
@@ -32,6 +34,7 @@ export interface Journey {
   routePoints?: Array<{ lat: number; lng: number }>;
   interceptCount?: number;
   intercepts?: Intercept[];
+  vehicleDetails?: VehicleDetails | null;
 }
 
 interface JourneyState {
@@ -40,14 +43,25 @@ interface JourneyState {
   loading: boolean;
   error: string | null;
   selectedInterceptId: string | null;
+  liveLocationSharing: boolean;
+  customerPosition: GPSPosition | null;
   setCurrent: (j: Journey | null) => void;
   setIntercepts: (i: Intercept[]) => void;
   setSelectedIntercept: (id: string | null) => void;
+  setLiveLocationSharing: (enabled: boolean) => void;
   buildJourney: (params: {
     originAddress: string;
     destinationAddress: string;
     transportMode: TransportMode;
+    vehicleDetails?: VehicleDetails;
+    liveLocationSharing?: boolean;
   }) => Promise<void>;
+  updateTelemetry: (patch: {
+    vehicleDetails?: Partial<VehicleDetails>;
+    liveLocation?: GPSPosition;
+    liveLocationSharing?: boolean;
+  }) => Promise<void>;
+  pushLiveLocation: (position: GPSPosition) => Promise<void>;
   loadIntercepts: () => Promise<void>;
 }
 
@@ -57,17 +71,47 @@ export const useJourney = create<JourneyState>((set, get) => ({
   loading: false,
   error: null,
   selectedInterceptId: null,
+  liveLocationSharing: false,
+  customerPosition: null,
   setCurrent: (current) => set({ current }),
   setIntercepts: (intercepts) => set({ intercepts }),
   setSelectedIntercept: (selectedInterceptId) => set({ selectedInterceptId }),
+  setLiveLocationSharing: (liveLocationSharing) => set({ liveLocationSharing }),
   buildJourney: async (params) => {
     set({ loading: true, error: null });
     try {
       const journey = await postJourney(params);
       const intercepts = await getIntercepts(journey.id);
-      set({ current: journey, intercepts, loading: false });
+      set({
+        current: journey,
+        intercepts,
+        loading: false,
+        liveLocationSharing: params.liveLocationSharing ?? false,
+        customerPosition: journey.vehicleDetails?.liveLocation ?? null,
+      });
     } catch (e) {
       set({ error: (e as Error).message, loading: false });
+      throw e;
+    }
+  },
+  updateTelemetry: async (patch) => {
+    const { current } = get();
+    if (!current) return;
+    const { vehicleDetails } = await patchJourneyTelemetry(current.id, patch);
+    set({
+      current: { ...current, vehicleDetails },
+      liveLocationSharing: vehicleDetails.liveLocationSharing ?? get().liveLocationSharing,
+      customerPosition: vehicleDetails.liveLocation ?? get().customerPosition,
+    });
+  },
+  pushLiveLocation: async (position) => {
+    const { current, liveLocationSharing } = get();
+    if (!current || !liveLocationSharing) return;
+    set({ customerPosition: position });
+    try {
+      await patchJourneyTelemetry(current.id, { liveLocation: position, liveLocationSharing: true });
+    } catch {
+      // Non-blocking — map still updates locally
     }
   },
   loadIntercepts: async () => {

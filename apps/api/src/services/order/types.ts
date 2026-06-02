@@ -32,6 +32,8 @@ export interface PlaceOrderResult {
   totalAmount: number; // paise
   estimatedDeliveryTime?: string;
   interceptAddress: string;
+  /** Instructions passed to the delivery partner via Swiggy landmark / notes */
+  riderBrief?: string;
   timing: TimingType;
   autoPlaceAt?: string; // ISO timestamp if timing == 'auto'
 }

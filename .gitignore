@@ -71,6 +71,7 @@ aidlc-workflows/
 # ─── Internal archives & session dumps ───────────────────────────────────────
 session-*.zip
 *.zip
+Gemini_Generated_Image_*.png
 
 # ─── Internal research & drafts (not for public repo) ───────────────────────
 research/

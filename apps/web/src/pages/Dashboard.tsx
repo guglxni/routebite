@@ -9,11 +9,11 @@ import {
   Package,
   Route,
   TrendingUp,
-  Loader2,
 } from "lucide-react";
 import CountUp from "~/components/CountUp";
 import GradientText from "~/components/GradientText";
 import SpotlightCard from "~/components/SpotlightCard";
+import { QuickRouteForm } from "~/components/journey/QuickRouteForm";
 import { useAuth } from "~/stores/auth";
 import { useOrders } from "~/stores/orders";
 import { useJourney } from "~/stores/journey";
@@ -21,32 +21,16 @@ import { JourneyMap } from "~/components/map/JourneyMap";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
-import { Input } from "~/components/ui/input";
-import { Label } from "~/components/ui/label";
 import { Progress } from "~/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { Skeleton } from "~/components/ui/skeleton";
-import { toast } from "sonner";
-import type { TransportMode } from "@routebite/shared/types";
-
-const demoPlaces = [
-  "Koramangala, Bengaluru",
-  "Indiranagar, Bengaluru",
-  "MG Road, Bengaluru",
-  "Whitefield, Bengaluru",
-  "Electronic City, Bengaluru",
-  "Hebbal, Bengaluru",
-];
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const { user, hydrated } = useAuth();
   const { all, fetchOrders } = useOrders();
-  const { current, intercepts, buildJourney, loading, setSelectedIntercept } = useJourney();
+  const { current, intercepts, loading, setSelectedIntercept, customerPosition } = useJourney();
 
-  const [from, setFrom] = useState("Koramangala, Bengaluru");
-  const [to, setTo] = useState("Whitefield, Bengaluru");
-  const [mode, setMode] = useState<TransportMode>("car");
   const [tab, setTab] = useState<"active" | "past">("active");
 
   useEffect(() => {
@@ -65,24 +49,6 @@ export default function Dashboard() {
     if (!intercepts.length) return 0;
     return intercepts.reduce((sum, p) => sum + p.score, 0) / intercepts.length;
   }, [intercepts]);
-
-  const onPlanRoute = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!from.trim() || !to.trim()) return;
-    try {
-      await buildJourney({
-        originAddress: from.trim(),
-        destinationAddress: to.trim(),
-        transportMode: mode,
-      });
-      const count = useJourney.getState().intercepts.length;
-      toast.success("Route analyzed", {
-        description: `${count} intercept points ready along your journey.`,
-      });
-    } catch (err) {
-      toast.error("Route failed", { description: (err as Error).message });
-    }
-  };
 
   const origin = current
     ? { lat: current.originLat, lng: current.originLng }
@@ -121,6 +87,7 @@ export default function Dashboard() {
               destination={destination}
               routePoints={current?.routePoints}
               intercepts={intercepts}
+              customerPosition={customerPosition}
               selectedInterceptId={null}
               onSelectIntercept={(id) => {
                 setSelectedIntercept(id);
@@ -164,66 +131,7 @@ export default function Dashboard() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <form onSubmit={onPlanRoute} className="flex flex-col gap-4">
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="origin">Origin</Label>
-                  <Input
-                    id="origin"
-                    list="rb-places"
-                    value={from}
-                    onChange={(e) => setFrom(e.target.value)}
-                    placeholder="Where are you starting?"
-                    className="bg-surface-raised border-border-subtle"
-                  />
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="destination">Destination</Label>
-                  <Input
-                    id="destination"
-                    list="rb-places"
-                    value={to}
-                    onChange={(e) => setTo(e.target.value)}
-                    placeholder="Where are you headed?"
-                    className="bg-surface-raised border-border-subtle"
-                  />
-                </div>
-                <datalist id="rb-places">
-                  {demoPlaces.map((p) => (
-                    <option key={p} value={p} />
-                  ))}
-                </datalist>
-                <div className="flex flex-wrap gap-2">
-                  {(["car", "bus", "train", "bike"] as TransportMode[]).map((m) => (
-                    <Button
-                      key={m}
-                      type="button"
-                      size="sm"
-                      variant={mode === m ? "default" : "outline"}
-                      onClick={() => setMode(m)}
-                      className={mode === m ? "bg-amber text-void hover:bg-amber-light" : ""}
-                    >
-                      {m}
-                    </Button>
-                  ))}
-                </div>
-                <Button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full bg-amber text-void hover:bg-amber-light"
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="size-4 animate-spin" data-icon="inline-start" />
-                      Analyzing route…
-                    </>
-                  ) : (
-                    <>
-                      Find intercepts
-                      <ArrowRight className="size-4" data-icon="inline-end" />
-                    </>
-                  )}
-                </Button>
-              </form>
+              <QuickRouteForm datalistId="rb-dashboard-places" />
             </CardContent>
           </Card>
 

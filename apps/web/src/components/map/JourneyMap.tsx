@@ -25,6 +25,7 @@ type JourneyMapProps = {
   intercepts?: Intercept[];
   selectedInterceptId?: string | null;
   riderPosition?: LatLng | null;
+  customerPosition?: LatLng | null;
   className?: string;
   heightClassName?: string;
   onSelectIntercept?: (id: string) => void;
@@ -58,6 +59,7 @@ export function JourneyMap({
   intercepts = [],
   selectedInterceptId,
   riderPosition,
+  customerPosition,
   className,
   heightClassName = "h-[420px]",
   onSelectIntercept,
@@ -72,8 +74,9 @@ export function JourneyMap({
     if (routePoints.length) pts.push(...routePoints);
     else intercepts.forEach((i) => pts.push({ lat: i.lat, lng: i.lng }));
     if (riderPosition) pts.push(riderPosition);
+    if (customerPosition) pts.push(customerPosition);
     return pts;
-  }, [origin, destination, routePoints, intercepts, riderPosition]);
+  }, [origin, destination, routePoints, intercepts, riderPosition, customerPosition]);
 
   const center = useMemo<[number, number]>(() => {
     if (origin) return [origin.lng, origin.lat];
@@ -202,6 +205,16 @@ export function JourneyMap({
               </MarkerContent>
               <MarkerLabel className="font-semibold text-violet-400">Rider</MarkerLabel>
               <MarkerTooltip>Rider en route</MarkerTooltip>
+            </MapMarker>
+          )}
+
+          {customerPosition && (
+            <MapMarker longitude={customerPosition.lng} latitude={customerPosition.lat}>
+              <MarkerContent>
+                <div className="size-5 rounded-full border-2 border-white bg-emerald-400 shadow-lg shadow-emerald-500/40 ring-2 ring-emerald-400/30" />
+              </MarkerContent>
+              <MarkerLabel className="font-semibold text-emerald-400">You</MarkerLabel>
+              <MarkerTooltip>Your live location</MarkerTooltip>
             </MapMarker>
           )}
 

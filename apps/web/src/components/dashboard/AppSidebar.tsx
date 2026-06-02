@@ -1,12 +1,13 @@
 import { Link, useLocation } from "react-router-dom";
 import {
+  Home,
   LayoutDashboard,
   MapPinned,
-  UtensilsCrossed,
   Package,
   Route,
   LogOut,
 } from "lucide-react";
+import { RouteBiteLogo, RouteBiteMark } from "~/components/brand/RouteBiteLogo";
 import {
   Sidebar,
   SidebarContent,
@@ -25,6 +26,7 @@ import { Badge } from "~/components/ui/badge";
 import { useAuth } from "~/stores/auth";
 
 const navItems = [
+  { to: "/", label: "Home", icon: Home },
   { to: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { to: "/routes/new", label: "Plan Route", icon: Route },
   { to: "/intercepts", label: "Intercepts", icon: MapPinned },
@@ -41,10 +43,8 @@ export function AppSidebar() {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" render={<Link to="/dashboard" />}>
-              <div className="flex size-8 items-center justify-center rounded-lg bg-amber text-void">
-                <UtensilsCrossed className="size-4" />
-              </div>
-              <div className="flex flex-col gap-0.5 leading-none">
+              <RouteBiteMark size="sm" className="rounded-lg" />
+              <div className="flex flex-col gap-0.5 leading-none group-data-[collapsible=icon]:hidden">
                 <span className="font-bold">RouteBite</span>
                 <span className="text-xs text-muted-foreground">Journey dashboard</span>
               </div>
@@ -60,8 +60,10 @@ export function AppSidebar() {
             <SidebarMenu>
               {navItems.map((item) => {
                 const active =
-                  location.pathname === item.to ||
-                  (item.to !== "/dashboard" && location.pathname.startsWith(item.to));
+                  item.to === "/"
+                    ? false
+                    : location.pathname === item.to ||
+                      (item.to !== "/dashboard" && location.pathname.startsWith(item.to));
                 return (
                   <SidebarMenuItem key={item.to}>
                     <SidebarMenuButton

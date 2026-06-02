@@ -1,14 +1,17 @@
 import { eq } from 'drizzle-orm';
 import { getDb } from '@routebite/db/client';
-import { orders, intercepts } from '@routebite/db/schema';
+import { orders, intercepts, journeys } from '@routebite/db/schema';
 import type { PlaceOrderInput, PlaceOrderResult } from './types';
 import { checkForDuplicateOrder } from './guard';
 import { generateInterceptAddress } from './address';
 import { calculateOrderTiming, estimatePrepTime, fallbackRiderTravel } from './timing';
+import { buildRiderBrief, parseVehicleDetails } from './rider-brief';
+import { getTrainRun } from '../railways/train-run';
+import { etaForStationIntercept } from '../railways/train-journey';
 import { SwiggyMCPClient } from '../swiggy/client';
 import { RouteBiteError } from '../../middleware/error-handler';
 import crypto from 'crypto';
-import type { OrderStatus } from '@routebite/shared/types';
+import type { OrderStatus, TransportMode, VehicleDetails } from '@routebite/shared/types';
 
 export async function placeOrder(
   input: PlaceOrderInput,
@@ -23,8 +26,13 @@ export async function placeOrder(
     throw new RouteBiteError('VALIDATION_ERROR', 'Intercept not found', 404);
   }
 
-  // 2. Generate delivery address
+  // 2. Generate delivery address + rider-facing brief from journey vehicle profile
   const address = await generateInterceptAddress({ lat: intercept.lat, lng: intercept.lng });
+  const journey = await db.select().from(journeys).where(eq(journeys.id, input.journeyId)).get();
+  const transportMode = (journey?.transportMode ?? 'car') as TransportMode;
+  const vehicleDetails: VehicleDetails =
+    parseVehicleDetails(journey?.vehicleDetailsJson) ?? { description: 'RouteBite journey' };
+  const riderBrief = buildRiderBrief(transportMode, vehicleDetails, address.label);
 
   // 3. Double-submit guard
   const itemCount = input.foodItems?.length ?? input.productItems?.length ?? 0;
@@ -41,7 +49,7 @@ export async function placeOrder(
   // 4. Create address on Swiggy (mock supports this)
   const addrRes = await client.callTool(
     'create_address',
-    { label: address.label, address: address.formatted, landmark: address.label },
+    { label: address.label, address: address.formatted, landmark: riderBrief },
     input.server
   );
   if (!addrRes.success) {
@@ -69,9 +77,20 @@ export async function placeOrder(
     });
   }
 
-  // 6. Calculate timing using real traffic-aware ETAs when coords available
+  // 6. Calculate timing — for trains use NTES live ETA to station intercept
   const prepTime = estimatePrepTime(input.server, itemCount);
-  const customerETA = intercept.estimatedDwellTime ?? 300; // fallback 5 min
+  let customerETA = intercept.estimatedDwellTime ?? 300;
+
+  if (transportMode === 'train' && vehicleDetails.trainNumber) {
+    try {
+      const run = await getTrainRun(vehicleDetails.trainNumber);
+      const ntesEta = etaForStationIntercept(run.run, intercept.name);
+      if (ntesEta != null) customerETA = ntesEta;
+    } catch {
+      // keep dwell fallback
+    }
+  }
+
   const timing = await calculateOrderTiming(
     customerETA,
     prepTime,
@@ -120,7 +139,7 @@ export async function placeOrder(
     totalAmount: 0, // Will be updated after Swiggy confirms
     timingType: input.timing,
     placedAt: input.timing === 'now' ? new Date() : undefined,
-    notes: `Delivery to: ${address.formatted}`,
+    notes: `Delivery to: ${address.formatted}\n\nRider brief: ${riderBrief}`,
   });
 
   return {
@@ -130,6 +149,7 @@ export async function placeOrder(
     totalAmount: 0,
     estimatedDeliveryTime: timing.autoPlaceAt.toISOString(),
     interceptAddress: address.formatted,
+    riderBrief,
     timing: input.timing,
     autoPlaceAt: input.timing === 'auto' ? timing.autoPlaceAt.toISOString() : undefined,
   };

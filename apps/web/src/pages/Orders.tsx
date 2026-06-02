@@ -1,220 +1,344 @@
-import { useRef, useLayoutEffect, useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import gsap from "gsap";
 import {
-  Package,
   ArrowRight,
-  Clock,
-  MapPin,
-  ChevronDown,
-  ChevronUp,
-  X,
+  ChevronRight,
   CircleDashed,
+  Clock,
+  Loader2,
+  MapPin,
   Navigation,
+  Package,
+  ShoppingBag,
+  UtensilsCrossed,
+  X,
 } from "lucide-react";
-import { useOrders } from "../stores/orders";
+import AnimatedContent from "~/components/AnimatedContent";
+import SpotlightCard from "~/components/SpotlightCard";
+import { Badge } from "~/components/ui/badge";
+import { Button } from "~/components/ui/button";
+import { Card, CardContent } from "~/components/ui/card";
+import { Tabs, TabsList, TabsTrigger } from "~/components/ui/tabs";
+import { cn } from "~/lib/utils";
+import { useOrders } from "~/stores/orders";
 
-const statusColors: Record<string, { bg: string; text: string; dot: string }> = {
-  pending: { bg: "bg-amber/10", text: "text-amber", dot: "bg-amber" },
-  confirmed: { bg: "bg-sky/10", text: "text-sky", dot: "bg-sky" },
-  preparing: { bg: "bg-violet/10", text: "text-violet", dot: "bg-violet" },
-  out_for_delivery: { bg: "bg-amber/10", text: "text-amber", dot: "bg-amber" },
-  delivered: { bg: "bg-emerald/10", text: "text-emerald", dot: "bg-emerald" },
-  cancelled: { bg: "bg-rose/10", text: "text-rose", dot: "bg-rose" },
-  failed: { bg: "bg-rose/10", text: "text-rose", dot: "bg-rose" },
+const statusStyles: Record<
+  string,
+  { label: string; badge: string; dot: string; iconBg: string }
+> = {
+  pending: {
+    label: "Pending",
+    badge: "border-amber/30 bg-amber/10 text-amber",
+    dot: "bg-amber",
+    iconBg: "bg-amber/15 text-amber",
+  },
+  confirmed: {
+    label: "Confirmed",
+    badge: "border-sky/30 bg-sky/10 text-sky",
+    dot: "bg-sky",
+    iconBg: "bg-sky/15 text-sky",
+  },
+  preparing: {
+    label: "Preparing",
+    badge: "border-violet/30 bg-violet/10 text-violet",
+    dot: "bg-violet",
+    iconBg: "bg-violet/15 text-violet",
+  },
+  out_for_delivery: {
+    label: "Out for delivery",
+    badge: "border-amber/30 bg-amber/10 text-amber-light",
+    dot: "bg-amber",
+    iconBg: "bg-amber/15 text-amber",
+  },
+  delivered: {
+    label: "Delivered",
+    badge: "border-emerald/30 bg-emerald/10 text-emerald",
+    dot: "bg-emerald",
+    iconBg: "bg-emerald/15 text-emerald",
+  },
+  cancelled: {
+    label: "Cancelled",
+    badge: "border-rose/30 bg-rose/10 text-rose",
+    dot: "bg-rose",
+    iconBg: "bg-rose/15 text-rose",
+  },
+  failed: {
+    label: "Failed",
+    badge: "border-rose/30 bg-rose/10 text-rose",
+    dot: "bg-rose",
+    iconBg: "bg-rose/15 text-rose",
+  },
 };
+
+function formatAmount(paise: number) {
+  if (!paise || paise <= 0) return null;
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(paise / 100);
+}
+
+function isActiveStatus(status: string) {
+  return !["delivered", "cancelled", "failed"].includes(status);
+}
 
 export default function Orders() {
   const { all, fetchOrders, cancelOrder, loading } = useOrders();
   const navigate = useNavigate();
-  const ref = useRef<HTMLDivElement>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "active" | "past">("all");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchOrders();
   }, [fetchOrders]);
 
-  useLayoutEffect(() => {
-    const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (prefersReduced) return;
-    const ctx = gsap.context(() => {
-      gsap.from(".order-card", {
-        y: 30,
-        opacity: 0,
-        duration: 0.5,
-        stagger: 0.08,
-        ease: "expo.out",
-      });
-    }, ref);
-    return () => ctx.revert();
+  const filtered = useMemo(() => {
+    return all.filter((o) => {
+      if (filter === "active") return isActiveStatus(o.status);
+      if (filter === "past") return !isActiveStatus(o.status);
+      return true;
+    });
   }, [all, filter]);
 
-  const filtered = all.filter((o) => {
-    if (filter === "active") return !["delivered", "cancelled", "failed"].includes(o.status);
-    if (filter === "past") return ["delivered", "cancelled", "failed"].includes(o.status);
-    return true;
-  });
+  const counts = useMemo(
+    () => ({
+      all: all.length,
+      active: all.filter((o) => isActiveStatus(o.status)).length,
+      past: all.filter((o) => !isActiveStatus(o.status)).length,
+    }),
+    [all],
+  );
 
   return (
-    <div ref={ref} className="max-w-4xl mx-auto px-4 sm:px-6 py-8 pb-24">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+    <div className="flex flex-col gap-6 p-4 md:p-6 pb-24">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-3xl font-extrabold mb-1">Your Orders</h1>
-          <p className="text-text-secondary text-sm">Track and manage your deliveries.</p>
+          <h1 className="text-3xl font-extrabold tracking-tight">Your orders</h1>
+          <p className="mt-1 text-sm text-text-secondary">
+            Track and manage deliveries synced to your journey intercepts.
+          </p>
         </div>
-        <div className="flex gap-1 p-1 rounded-xl bg-surface-raised border border-border-subtle">
-          {(["all", "active", "past"] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all capitalize ${
-                filter === f ? "bg-amber text-void" : "text-text-secondary hover:text-text-primary"
-              }`}
-            >
-              {f}
-            </button>
-          ))}
-        </div>
+
+        <Tabs value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
+          <TabsList className="h-auto flex-wrap gap-1 bg-surface-raised/80 p-1">
+            {(["all", "active", "past"] as const).map((key) => (
+              <TabsTrigger
+                key={key}
+                value={key}
+                className="capitalize data-[state=active]:bg-amber data-[state=active]:text-void"
+              >
+                {key}
+                <span className="ml-1.5 rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] tabular-nums">
+                  {counts[key]}
+                </span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
       </div>
 
       {loading && all.length === 0 ? (
-        <div className="flex items-center justify-center py-24">
-          <CircleDashed className="w-8 h-8 text-amber animate-spin" />
+        <div className="flex min-h-[40vh] items-center justify-center">
+          <Loader2 className="size-8 animate-spin text-amber" />
         </div>
       ) : filtered.length === 0 ? (
-        <div className="glass rounded-2xl p-12 text-center">
-          <Package className="w-10 h-10 mx-auto mb-4 text-text-muted" />
-          <h3 className="text-lg font-bold mb-2">No orders found</h3>
-          <p className="text-sm text-text-muted mb-4">
-            {filter === "all" ? "You have not placed any orders yet." : `No ${filter} orders.`}
-          </p>
-          <Link
-            to="/routes/new"
-            className="inline-flex items-center gap-1 text-sm font-bold text-amber hover:text-amber-light transition-colors"
-          >
-            Plan a route <ArrowRight className="w-4 h-4" />
-          </Link>
-        </div>
+        <Card className="border-border-subtle bg-surface-raised/30">
+          <CardContent className="flex flex-col items-center gap-4 py-16 text-center">
+            <div className="flex size-14 items-center justify-center rounded-2xl bg-amber/10">
+              <Package className="size-7 text-amber" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold">No orders found</h3>
+              <p className="mt-1 max-w-sm text-sm text-text-muted">
+                {filter === "all"
+                  ? "Plan a route, pick an intercept, and place your first order."
+                  : `No ${filter} orders right now.`}
+              </p>
+            </div>
+            <Button className="bg-amber text-void hover:bg-amber-light" render={<Link to="/routes/new" />}>
+              Plan a route
+              <ArrowRight className="size-4" data-icon="inline-end" />
+            </Button>
+          </CardContent>
+        </Card>
       ) : (
-        <div className="space-y-3">
-          {filtered.map((order) => {
-            const s = statusColors[order.status] ?? statusColors.pending;
-            const isExpanded = expandedId === order.id;
+        <div className="grid gap-4 xl:grid-cols-2">
+          {filtered.map((order, index) => {
+            const style = statusStyles[order.status] ?? statusStyles.pending;
+            const amount = formatAmount(order.totalAmount);
+            const expanded = expandedId === order.id;
+            const ServerIcon = order.server === "food" ? UtensilsCrossed : ShoppingBag;
+
             return (
-              <div
-                key={order.id}
-                className="order-card glass rounded-2xl overflow-hidden transition-all"
-              >
-                <div
-                  onClick={() => setExpandedId(isExpanded ? null : order.id)}
-                  className="p-5 cursor-pointer hover:bg-surface-raised/40 transition-colors"
+              <AnimatedContent key={order.id} distance={32} delay={index * 0.04}>
+                <SpotlightCard
+                  className={cn(
+                    "overflow-hidden rounded-2xl border border-border-subtle bg-surface-raised/40",
+                    expanded && "ring-1 ring-amber/20",
+                  )}
+                  spotlightColor="rgba(245, 158, 11, 0.07)"
                 >
-                  <div className="flex items-center gap-4">
-                    <div className={`w-11 h-11 rounded-xl ${s.bg} flex items-center justify-center shrink-0`}>
-                      <Package className={`w-5 h-5 ${s.text}`} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="font-bold text-sm truncate">
-                          {order.server === "food" ? "Food" : "Instamart"} Order
-                        </span>
-                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${s.bg} ${s.text}`}>
-                          {order.status.replace(/_/g, " ")}
-                        </span>
+                  <div className="flex flex-col gap-4 p-5">
+                    <div className="flex items-start gap-4">
+                      <div
+                        className={cn(
+                          "flex size-12 shrink-0 items-center justify-center rounded-xl",
+                          style.iconBg,
+                        )}
+                      >
+                        <ServerIcon className="size-5" />
                       </div>
-                      <div className="flex items-center gap-3 text-xs text-text-muted">
-                        <span>#{order.id.slice(0, 8)}</span>
-                        <span className="w-px h-3 bg-border-subtle" />
-                        <span className="flex items-center gap-1">
-                          <MapPin className="w-3 h-3" />
-                          {order.interceptAddress ?? "Intercept point"}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="shrink-0 flex items-center gap-3">
-                      <div className="text-right hidden sm:block">
-                        <div className="font-bold text-sm">
-                          {order.totalAmount > 0 ? `Rs. ${(order.totalAmount / 100).toFixed(2)}` : "—"}
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="font-semibold text-text-primary">
+                            {order.server === "food" ? "Food order" : "Instamart order"}
+                          </h3>
+                          <Badge variant="outline" className={cn("font-medium", style.badge)}>
+                            <span className={cn("mr-1.5 inline-block size-1.5 rounded-full", style.dot)} />
+                            {style.label}
+                          </Badge>
                         </div>
-                        <div className="text-[10px] text-text-muted">
+
+                        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-muted">
+                          <span className="font-mono">#{order.id.slice(0, 8)}</span>
+                          <span className="hidden sm:inline text-border-medium">·</span>
+                          <span className="inline-flex min-w-0 items-center gap-1">
+                            <MapPin className="size-3 shrink-0" />
+                            <span className="truncate">
+                              {order.interceptAddress ?? "Intercept point"}
+                            </span>
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="hidden shrink-0 text-right sm:block">
+                        {amount ? (
+                          <p className="text-lg font-bold tabular-nums">{amount}</p>
+                        ) : (
+                          <p className="text-sm text-text-muted">—</p>
+                        )}
+                        <p className="text-[11px] text-text-muted">
                           {order.timingType === "auto" ? "Auto-timed" : "Immediate"}
-                        </div>
+                        </p>
                       </div>
-                      {isExpanded ? (
-                        <ChevronUp className="w-4 h-4 text-text-muted" />
-                      ) : (
-                        <ChevronDown className="w-4 h-4 text-text-muted" />
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 border-t border-border-subtle pt-4">
+                      {order.swiggyOrderId && isActiveStatus(order.status) && (
+                        <Button
+                          size="sm"
+                          className="bg-amber text-void hover:bg-amber-light"
+                          onClick={() => navigate(`/track/${order.id}`)}
+                        >
+                          <Navigation className="size-3.5" data-icon="inline-start" />
+                          Live track
+                        </Button>
+                      )}
+
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-border-subtle"
+                        onClick={() => setExpandedId(expanded ? null : order.id)}
+                      >
+                        {expanded ? "Hide details" : "Details"}
+                        <ChevronRight
+                          className={cn("size-3.5 transition-transform", expanded && "rotate-90")}
+                          data-icon="inline-end"
+                        />
+                      </Button>
+
+                      {!isActiveStatus(order.status) && order.swiggyOrderId && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-text-muted"
+                          onClick={() =>
+                            window.open(`https://www.swiggy.com/orders/${order.swiggyOrderId}`, "_blank")
+                          }
+                        >
+                          Swiggy receipt
+                          <ArrowRight className="size-3.5" data-icon="inline-end" />
+                        </Button>
                       )}
                     </div>
-                  </div>
-                </div>
 
-                {/* Expanded details */}
-                {isExpanded && (
-                  <div className="px-5 pb-5 border-t border-border-subtle">
-                    <div className="pt-4 space-y-3">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="p-3 rounded-xl bg-surface-raised/50">
-                          <div className="text-[10px] uppercase tracking-wider text-text-muted mb-1">Placed</div>
-                          <div className="text-sm font-medium flex items-center gap-1.5">
-                            <Clock className="w-3.5 h-3.5 text-text-muted" />
+                    {expanded && (
+                      <div className="grid gap-3 border-t border-border-subtle pt-4 sm:grid-cols-2">
+                        <div className="rounded-xl border border-border-subtle bg-void/40 p-3">
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+                            Placed
+                          </p>
+                          <p className="mt-1 flex items-center gap-1.5 text-sm">
+                            <Clock className="size-3.5 text-text-muted" />
                             {order.placedAt
-                              ? new Date(order.placedAt).toLocaleString()
+                              ? new Date(order.placedAt).toLocaleString("en-IN")
                               : "Pending auto-place"}
-                          </div>
+                          </p>
                         </div>
-                        <div className="p-3 rounded-xl bg-surface-raised/50">
-                          <div className="text-[10px] uppercase tracking-wider text-text-muted mb-1">Swiggy Order</div>
-                          <div className="text-sm font-medium">
+                        <div className="rounded-xl border border-border-subtle bg-void/40 p-3">
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+                            Swiggy ID
+                          </p>
+                          <p className="mt-1 truncate font-mono text-sm">
                             {order.swiggyOrderId ?? "Not placed yet"}
-                          </div>
+                          </p>
                         </div>
-                      </div>
 
-                      {order.autoPlaceAt && (
-                        <div className="p-3 rounded-xl bg-amber/5 border border-amber/20">
-                          <div className="text-[10px] uppercase tracking-wider text-amber mb-1">Auto-Place At</div>
-                          <div className="text-sm font-bold text-amber">
-                            {new Date(order.autoPlaceAt).toLocaleString()}
+                        {order.autoPlaceAt && (
+                          <div className="rounded-xl border border-amber/20 bg-amber/5 p-3 sm:col-span-2">
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-amber">
+                              Auto-place at
+                            </p>
+                            <p className="mt-1 text-sm font-semibold text-amber-light">
+                              {new Date(order.autoPlaceAt).toLocaleString("en-IN")}
+                            </p>
                           </div>
-                        </div>
-                      )}
+                        )}
 
-                      <div className="flex justify-end gap-3">
-                        {!["delivered", "cancelled", "failed"].includes(order.status) && (
-                          <button
-                            onClick={() => cancelOrder(order.id)}
-                            className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-rose hover:bg-rose/10 rounded-lg transition-colors"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                            Cancel
-                          </button>
-                        )}
-                        {order.swiggyOrderId && !["delivered", "cancelled", "failed"].includes(order.status) && (
-                          <button
-                            onClick={() => navigate(`/track/${order.id}`)}
-                            className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-emerald hover:bg-emerald/10 rounded-lg transition-colors"
-                          >
-                            <Navigation className="w-3.5 h-3.5" />
-                            Live Track
-                          </button>
-                        )}
-                        {order.swiggyOrderId && (
-                          <button
-                            onClick={() => window.open(`https://www.swiggy.com/orders/${order.swiggyOrderId}`, "_blank")}
-                            className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-amber hover:bg-amber/10 rounded-lg transition-colors"
-                          >
-                            Track on Swiggy <ArrowRight className="w-3.5 h-3.5" />
-                          </button>
+                        {isActiveStatus(order.status) && (
+                          <div className="flex flex-wrap gap-2 sm:col-span-2 sm:justify-end">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-rose/30 text-rose hover:bg-rose/10"
+                              onClick={() => cancelOrder(order.id)}
+                            >
+                              <X className="size-3.5" data-icon="inline-start" />
+                              Cancel order
+                            </Button>
+                            {order.swiggyOrderId && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() =>
+                                  window.open(
+                                    `https://www.swiggy.com/orders/${order.swiggyOrderId}`,
+                                    "_blank",
+                                  )
+                                }
+                              >
+                                Open in Swiggy
+                              </Button>
+                            )}
+                          </div>
                         )}
                       </div>
-                    </div>
+                    )}
                   </div>
-                )}
-              </div>
+                </SpotlightCard>
+              </AnimatedContent>
             );
           })}
+        </div>
+      )}
+
+      {loading && all.length > 0 && (
+        <div className="flex items-center justify-center gap-2 text-xs text-text-muted">
+          <CircleDashed className="size-3.5 animate-spin" />
+          Refreshing orders…
         </div>
       )}
     </div>

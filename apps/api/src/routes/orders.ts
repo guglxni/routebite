@@ -8,6 +8,7 @@ import { placeOrder } from '../services/order/placement';
 import { SwiggyMCPClient } from '../services/swiggy/client';
 import { computeAlignment } from '../services/tracking/alignment';
 import { startPolling } from '../services/tracking/poller';
+import { loadCustomerContextForOrder } from '../services/tracking/customer-context';
 import { RouteBiteError } from '../middleware/error-handler';
 
 const app = new Hono();
@@ -121,11 +122,14 @@ app.get('/:id/track', async (c) => {
   const raw = trackRes.data as Record<string, unknown>;
 
   // Normalize fields
-  const riderLoc = (raw.rider_location ?? raw.riderPosition ?? raw.rider_position) as Record<string, number> | undefined;
+  const riderLoc = (raw.rider_location ?? raw.riderPosition ?? raw.rider_position ?? raw.currentLocation) as Record<string, number> | undefined;
   const riderLat = riderLoc?.lat ?? riderLoc?.latitude;
   const riderLng = riderLoc?.lng ?? riderLoc?.longitude;
-  const customerETA = (raw.customer_eta ?? raw.customerETA ?? raw.estimated_delivery_time_seconds) as number | undefined;
+  const swiggyCustomerETA = (raw.customer_eta ?? raw.customerETA ?? raw.estimated_delivery_time_seconds) as number | undefined;
   const riderETA = (raw.rider_eta ?? raw.riderETA) as number | undefined;
+
+  const customerContext = await loadCustomerContextForOrder(id);
+  const customerETA = customerContext?.customerETA ?? swiggyCustomerETA;
 
   // Compute alignment
   let alignmentStatus = null;
@@ -136,6 +140,9 @@ app.get('/:id/track', async (c) => {
       orderStatus: order.status,
     });
   }
+
+  const deliveryInstructions =
+    (raw.delivery_instructions ?? raw.deliveryInstructions) as string | undefined;
 
   return c.json({
     success: true,
@@ -149,8 +156,14 @@ app.get('/:id/track', async (c) => {
         riderLat !== undefined && riderLng !== undefined
           ? { lat: riderLat, lng: riderLng }
           : undefined,
+      customerContext: customerContext
+        ? {
+            ...customerContext,
+            riderBrief: deliveryInstructions ?? customerContext.riderBrief,
+          }
+        : null,
       alignmentStatus,
-      raw: raw,
+      ...(process.env.NODE_ENV !== 'production' ? { raw } : {}),
     },
   });
 });

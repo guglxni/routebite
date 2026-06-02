@@ -48,7 +48,25 @@ export interface GPSPosition extends LatLng {
 export interface VehicleDetails {
   plateNumber?: string;
   color?: string;
+  /** Car / bike model, e.g. "Swift", "Activa 6G" */
+  model?: string;
   description: string;
+  /** Bus route number or service ID */
+  busRouteNumber?: string;
+  busOperator?: string;
+  /** 5-digit Indian Railways train number, e.g. "12301" */
+  trainNumber?: string;
+  trainName?: string;
+  coach?: string;
+  seatBerth?: string;
+  liveLocationSharing?: boolean;
+  liveLocation?: GPSPosition;
+  /** Cached NTES metadata for train journeys */
+  trainRunSnapshot?: {
+    startDate: string;
+    trainName?: string;
+    updatedAt: string;
+  };
 }
 
 // ─── Journey ─────────────────────────────────────────────────────────────────

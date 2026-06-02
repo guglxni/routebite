@@ -1,8 +1,9 @@
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { getDb } from '@routebite/db/client';
 import { orders, trackingEvents } from '@routebite/db/schema';
 import { SwiggyMCPClient } from '../swiggy/client';
 import { computeAlignmentScore, type AlignmentInput } from './alignment';
+import { loadCustomerContextForOrder } from './customer-context';
 import type { OrderStatus } from '@routebite/shared/types';
 
 // Orders we actively poll for
@@ -106,14 +107,16 @@ async function pollOrder(orderId: string, swiggyOrderId: string, server: 'food' 
   }
 
   const normalized = normalizeTracking(raw);
+  const customerContext = await loadCustomerContextForOrder(orderId);
 
-  // We don't have real customer GPS in this demo; set to intercept lat/lng from journey later if needed.
-  // For now store what we have.
+  const customerLat = customerContext?.customerPosition?.lat;
+  const customerLng = customerContext?.customerPosition?.lng;
+  const customerETA = customerContext?.customerETA ?? normalized.customerETA;
 
   let alignmentScore: number | undefined;
-  if (normalized.customerETA !== undefined && normalized.riderETA !== undefined) {
+  if (customerETA !== undefined && normalized.riderETA !== undefined) {
     const input: AlignmentInput = {
-      customerETA: normalized.customerETA,
+      customerETA,
       riderETA: normalized.riderETA,
       orderStatus: normalized.orderStatus ?? 'confirmed',
     };
@@ -123,9 +126,11 @@ async function pollOrder(orderId: string, swiggyOrderId: string, server: 'food' 
   const db = getDb();
   await db.insert(trackingEvents).values({
     orderId,
+    customerLat,
+    customerLng,
     riderLat: normalized.riderLat,
     riderLng: normalized.riderLng,
-    customerETA: normalized.customerETA,
+    customerETA,
     riderETA: normalized.riderETA,
     alignmentScore,
   });

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useAuth } from "~/stores/auth";
 import { useProtectedNavigate } from "~/hooks/use-protected-navigate";
 import { Button } from "~/components/ui/button";
+import { RouteBiteLogo } from "~/components/brand/RouteBiteLogo";
 import { cn } from "~/lib/utils";
 
 const links = [
@@ -24,14 +25,8 @@ export function PremiumNavbar() {
   return (
     <header className="fixed inset-x-0 top-0 z-50 border-b border-white/[0.06] bg-[#07070c]/90 backdrop-blur-2xl">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-        <Link to="/" className="group flex items-center gap-2.5">
-          <div className="flex size-9 items-center justify-center rounded-xl bg-gradient-to-br from-amber to-amber-dark shadow-lg shadow-amber/25 transition-transform group-hover:scale-105">
-            <span className="text-sm font-black text-void">R</span>
-          </div>
-          <div className="flex flex-col leading-none">
-            <span className="font-display text-lg font-semibold tracking-tight text-white">RouteBite</span>
-            <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-amber/80">On-route food</span>
-          </div>
+        <Link to="/" className="group transition-opacity hover:opacity-90">
+          <RouteBiteLogo size="md" />
         </Link>
 
         <nav className="hidden items-center gap-1 md:flex">

@@ -85,18 +85,23 @@ export default function Intercepts() {
             {current.originAddress} → {current.destinationAddress}
           </p>
         </div>
-        <Tabs value={serverPreference} onValueChange={(v) => setServerPreference(v as ServerType)}>
-          <TabsList>
-            <TabsTrigger value="food" className="gap-1.5">
-              <UtensilsCrossed className="size-3.5" />
-              Food
-            </TabsTrigger>
-            <TabsTrigger value="instamart" className="gap-1.5">
-              <ShoppingBag className="size-3.5" />
-              Instamart
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={loadIntercepts} disabled={loading}>
+            {loading ? <Loader2 className="size-3.5 animate-spin" /> : "Refresh ETAs"}
+          </Button>
+          <Tabs value={serverPreference} onValueChange={(v) => setServerPreference(v as ServerType)}>
+            <TabsList>
+              <TabsTrigger value="food" className="gap-1.5">
+                <UtensilsCrossed className="size-3.5" />
+                Food
+              </TabsTrigger>
+              <TabsTrigger value="instamart" className="gap-1.5">
+                <ShoppingBag className="size-3.5" />
+                Instamart
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-5">
@@ -159,8 +164,14 @@ export default function Intercepts() {
                     <div className="mb-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
                       <span className="inline-flex items-center gap-1">
                         <Clock className="size-3" />
-                        {point.dwellTime} min
+                        {Math.round(point.dwellTime / 60)} min halt
                       </span>
+                      {point.etaSeconds != null && (
+                        <span className="inline-flex items-center gap-1 text-sky">
+                          <Clock className="size-3" />
+                          ETA {Math.floor(point.etaSeconds / 60)}m
+                        </span>
+                      )}
                       <span className="inline-flex items-center gap-1">
                         <ChefHat className="size-3" />
                         {point.restaurantCount} spots

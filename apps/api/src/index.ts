@@ -13,6 +13,7 @@ import interceptRoutes from './routes/intercepts';
 import orderRoutes from './routes/orders';
 import authRoutes from './routes/auth';
 import userRoutes from './routes/user';
+import railwaysRoutes from './routes/railways';
 import { bootstrapPolling } from './services/tracking/poller';
 
 const app = new Hono();
@@ -47,6 +48,9 @@ app.route('/api/v1/auth', authRoutes);
 
 app.use('/api/v1/user/*', authMiddleware);
 app.route('/api/v1/user', userRoutes);
+
+app.use('/api/v1/railways/*', authMiddleware);
+app.route('/api/v1/railways', railwaysRoutes);
 
 // ─── Error Handling ──────────────────────────────────────────────────────────
 
