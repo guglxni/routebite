@@ -1,0 +1,81 @@
+# ─── Dependencies ───────────────────────────────────────────────────────────
+node_modules/
+.pnp.*
+.bun/
+
+# ─── Build & cache ──────────────────────────────────────────────────────────
+dist/
+build/
+out/
+.next/
+.vite/
+*.tsbuildinfo
+coverage/
+.nyc_output/
+
+# ─── Secrets & credentials (NEVER commit) ───────────────────────────────────
+.env
+.env.*
+!.env.example
+!.env*.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+credentials.json
+service-account*.json
+**/secrets/
+**/*secret*
+**/*credentials*
+
+# ─── Local databases ─────────────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+packages/db/local.db
+apps/api/local.db
+
+# ─── OS & editors ───────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+!.vscode/extensions.json
+
+# ─── Logs ───────────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+bun-debug.log*
+
+# ─── AI / agent tooling (internal, may contain session context) ─────────────
+.cursor/
+.specstory/
+.claude/
+.cursorindexingignore
+graphify-out/
+.aidlc/
+.aidlc-rule-details/
+
+# ─── Vendored workflow tooling (not RouteBite product source) ───────────────
+aidlc-workflows/
+
+# ─── Internal archives & session dumps ───────────────────────────────────────
+session-*.zip
+*.zip
+
+# ─── Internal research & drafts (not for public repo) ───────────────────────
+research/
+feasibility-analysis.md
+feasibility-analysis-real-project.md
+
+# ─── Agent-specific project notes ───────────────────────────────────────────
+CLAUDE.md

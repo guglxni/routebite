@@ -1,0 +1,29 @@
+{
+  "name": "@routebite/api",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "test": "bun test tests/unit",
+    "test:integration": "RUN_MAPS_INTEGRATION=1 bun test tests/integration",
+    "test:e2e": "RUN_E2E=1 bun test tests/e2e",
+    "test:all": "bun test",
+    "seed:dev-user": "bun run scripts/seed-dev-user.ts",
+    "test:maps-smoke": "bun run test-maps.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.0",
+    "@hono/zod-validator": "^0.7.6",
+    "@routebite/db": "workspace:*",
+    "@routebite/shared": "workspace:*",
+    "drizzle-orm": "^0.36.0",
+    "hono": "^4.6.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.6.0"
+  }
+}

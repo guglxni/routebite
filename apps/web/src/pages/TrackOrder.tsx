@@ -1,0 +1,308 @@
+import { useEffect, useRef, useState } from "react";
+import { useParams, Link } from "react-router-dom";
+import gsap from "gsap";
+import {
+  Navigation,
+  MapPin,
+  Clock,
+  Bike,
+  Activity,
+  AlertCircle,
+  ArrowLeft,
+  RefreshCw,
+  CircleDashed,
+  Crosshair,
+} from "lucide-react";
+import { useTracking } from "../stores/tracking";
+import CountUp from "~/components/CountUp";
+import SpotlightCard from "~/components/SpotlightCard";
+import { JourneyMap } from "~/components/map/JourneyMap";
+
+function formatETA(seconds?: number): string {
+  if (seconds === undefined || seconds === null) return "—";
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  if (m >= 60) {
+    const h = Math.floor(m / 60);
+    const rm = m % 60;
+    return `${h}h ${rm}m`;
+  }
+  return `${m}m ${s}s`;
+}
+
+function statusLabel(status: string): string {
+  return status.replace(/_/g, " ");
+}
+
+export default function TrackOrder() {
+  const { orderId } = useParams<{ orderId: string }>();
+  const {
+    snapshot,
+    history,
+    loading,
+    error,
+    polling,
+    fetchTrack,
+    fetchHistory,
+    startPolling,
+    stopPolling,
+  } = useTracking();
+  const mapRef = useRef<HTMLDivElement>(null);
+  const [showRaw, setShowRaw] = useState(false);
+
+  useEffect(() => {
+    if (!orderId) return;
+    fetchTrack(orderId);
+    fetchHistory(orderId);
+    startPolling(orderId);
+    return () => {
+      stopPolling();
+    };
+  }, [orderId, fetchTrack, fetchHistory, startPolling, stopPolling]);
+
+  // Entrance animation
+  useEffect(() => {
+    if (!mapRef.current || loading) return;
+    const ctx = gsap.context(() => {
+      gsap.from(".track-card", {
+        y: 24,
+        opacity: 0,
+        duration: 0.5,
+        stagger: 0.1,
+        ease: "expo.out",
+      });
+    }, mapRef);
+    return () => ctx.revert();
+  }, [loading, snapshot]);
+
+  const alignment = snapshot?.alignmentStatus;
+  const rider = snapshot?.riderPosition;
+  const hasData = !!(snapshot && snapshot.swiggyOrderId !== null);
+
+  // Render live map with rider position
+  const renderLiveMap = () => {
+    const rider = snapshot?.riderPosition;
+    if (!rider) {
+      return (
+        <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+          <MapPin className="mr-1.5 size-4" />
+          Waiting for rider location…
+        </div>
+      );
+    }
+
+    return (
+      <JourneyMap
+        riderPosition={{ lat: rider.lat, lng: rider.lng }}
+        origin={{ lat: rider.lat - 0.02, lng: rider.lng - 0.02 }}
+        destination={{ lat: rider.lat + 0.01, lng: rider.lng + 0.01 }}
+        heightClassName="h-full min-h-[320px]"
+        className="h-full border-0 rounded-none"
+      />
+    );
+  };
+
+  return (
+    <div ref={mapRef} className="max-w-5xl mx-auto px-4 sm:px-6 py-8 pb-24">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <Link
+            to="/orders"
+            className="p-2 rounded-lg hover:bg-surface-raised transition-colors text-text-muted hover:text-text-primary"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </Link>
+          <div>
+            <h1 className="text-2xl font-extrabold">Live Tracking</h1>
+            <p className="text-sm text-text-muted">
+              Order #{orderId?.slice(0, 8)}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {polling && (
+            <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald bg-emerald/10 px-2 py-1 rounded-full">
+              <Crosshair className="w-3 h-3" />
+              Live
+            </span>
+          )}
+          <button
+            onClick={() => orderId && fetchTrack(orderId)}
+            disabled={loading}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-amber hover:bg-amber/10 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      {loading && !snapshot ? (
+        <div className="flex items-center justify-center py-24">
+          <CircleDashed className="w-8 h-8 text-amber animate-spin" />
+        </div>
+      ) : error ? (
+        <div className="glass rounded-2xl p-8 text-center">
+          <AlertCircle className="w-8 h-8 mx-auto mb-3 text-rose" />
+          <h3 className="font-bold mb-1">Tracking unavailable</h3>
+          <p className="text-sm text-text-muted">{error}</p>
+        </div>
+      ) : !hasData ? (
+        <div className="glass rounded-2xl p-8 text-center">
+          <Clock className="w-8 h-8 mx-auto mb-3 text-text-muted" />
+          <h3 className="font-bold mb-1">Not yet placed</h3>
+          <p className="text-sm text-text-muted">
+            This order hasn&apos;t been sent to Swiggy yet. Check back after placement.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Main map card */}
+          <div className="track-card lg:col-span-2 glass rounded-2xl overflow-hidden border border-border-subtle">
+            <div className="p-4 border-b border-border-subtle flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Navigation className="w-4 h-4 text-amber" />
+                <span className="text-sm font-bold">GPS View</span>
+              </div>
+              <span
+                className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-surface-raised text-text-muted"
+              >
+                {statusLabel(snapshot!.status)}
+              </span>
+            </div>
+            <div className="relative h-80 bg-void/40">{renderLiveMap()}</div>
+          </div>
+
+          {/* Stats column */}
+          <div className="space-y-3">
+            {/* Alignment score */}
+            <div className="track-card">
+            <SpotlightCard
+              className="rounded-2xl border border-border-subtle bg-surface-raised/20 p-4"
+              spotlightColor="rgba(245, 158, 11, 0.08)"
+            >
+              <div className="flex items-center gap-2 mb-3">
+                <Activity className="w-4 h-4 text-text-muted" />
+                <span className="text-xs font-bold uppercase tracking-wider text-text-muted">Alignment</span>
+              </div>
+              {alignment ? (
+                <div>
+                  <div className="flex items-end gap-2 mb-2">
+                    <span
+                      className="text-3xl font-extrabold tabular-nums"
+                      style={{ color: alignment.color }}
+                    >
+                      <CountUp to={alignment.score} duration={1.2} />
+                    </span>
+                    <span className="text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: alignment.color }}>
+                      {alignment.status}
+                    </span>
+                  </div>
+                  <div className="text-xs text-text-secondary leading-relaxed">
+                    {alignment.recommendation}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-sm text-text-muted">Computing...</div>
+              )}
+            </SpotlightCard>
+            </div>
+
+            {/* ETAs */}
+            <div className="track-card glass rounded-2xl p-4 border border-border-subtle">
+              <div className="flex items-center gap-2 mb-3">
+                <Clock className="w-4 h-4 text-text-muted" />
+                <span className="text-xs font-bold uppercase tracking-wider text-text-muted">ETAs</span>
+              </div>
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-text-secondary">Your arrival</span>
+                  <span className="text-sm font-bold text-sky">{formatETA(snapshot?.customerETA)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-text-secondary">Rider arrival</span>
+                  <span className="text-sm font-bold text-amber">{formatETA(snapshot?.riderETA)}</span>
+                </div>
+                {alignment && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-text-secondary">Order ready</span>
+                    <span className="text-sm font-bold text-emerald">{formatETA(alignment.orderReadyTime)}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Rider position */}
+            {rider && (
+              <div className="track-card glass rounded-2xl p-4 border border-border-subtle">
+                <div className="flex items-center gap-2 mb-2">
+                  <Bike className="w-4 h-4 text-text-muted" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-text-muted">Rider Location</span>
+                </div>
+                <div className="font-mono text-xs text-text-secondary">
+                  {rider.lat.toFixed(6)}
+                  <br />
+                  {rider.lng.toFixed(6)}
+                </div>
+              </div>
+            )}
+
+            {/* History sparkline */}
+            {history.length > 0 && (
+              <div className="track-card glass rounded-2xl p-4 border border-border-subtle">
+                <div className="flex items-center gap-2 mb-3">
+                  <Activity className="w-4 h-4 text-text-muted" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-text-muted">History</span>
+                </div>
+                <div className="flex items-end gap-0.5 h-10">
+                  {history
+                    .slice(0, 20)
+                    .reverse()
+                    .map((ev) => {
+                      const score = ev.alignmentScore ?? 0;
+                      const h = Math.max(4, score * 40);
+                      return (
+                        <div
+                          key={ev.id}
+                          className="flex-1 rounded-sm"
+                          style={{
+                            height: `${h}px`,
+                            backgroundColor:
+                              score > 0.8 ? "#10B981" : score > 0.5 ? "#0EA5E9" : "#F59E0B",
+                            opacity: 0.8,
+                          }}
+                          title={`Score: ${(score * 100).toFixed(0)}`}
+                        />
+                      );
+                    })}
+                </div>
+                <div className="flex justify-between text-[10px] text-text-muted mt-1">
+                  <span>{history.length} snapshots</span>
+                  <span>Latest</span>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Debug raw data toggle */}
+      {!!snapshot?.raw && (
+        <div className="mt-4">
+          <button
+            onClick={() => setShowRaw((s) => !s)}
+            className="text-[10px] font-bold uppercase tracking-wider text-text-muted hover:text-text-primary transition-colors"
+          >
+            {showRaw ? "Hide" : "Show"} Raw Response
+          </button>
+          {showRaw && (
+            <pre className="mt-2 p-3 rounded-xl bg-void border border-border-subtle text-[10px] text-text-muted overflow-auto max-h-64">
+              {JSON.stringify(snapshot.raw, null, 2)}
+            </pre>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

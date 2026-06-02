@@ -1,0 +1,30 @@
+{
+  "name": "routebite",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "concurrently \"bun run --cwd apps/api dev\" \"bun run --cwd apps/mock-swiggy dev\" \"bun run --cwd apps/web dev\"",
+    "dev:api": "bun run --cwd apps/api dev",
+    "dev:web": "bun run --cwd apps/web dev",
+    "dev:mock": "bun run --cwd apps/mock-swiggy dev",
+    "build": "bun run --cwd apps/web build",
+    "lint": "eslint .",
+    "db:generate": "bun run --cwd apps/web db:generate",
+    "db:migrate": "bun run --cwd apps/web db:migrate",
+    "db:push": "bun run --cwd apps/web db:push",
+    "typecheck": "bunx tsc --noEmit --project apps/api/tsconfig.json && bunx tsc --noEmit --project apps/web/tsconfig.json && bunx tsc --noEmit --project apps/mock-swiggy/tsconfig.json && bunx tsc --noEmit --project packages/shared/tsconfig.json && bunx tsc --noEmit --project packages/db/tsconfig.json && echo 'All typechecks pass'",
+    "test:api": "bun run --cwd apps/api test",
+    "test:api:integration": "bun run --cwd apps/api test:integration",
+    "test:api:smoke": "bun run --cwd apps/api test:maps-smoke",
+    "test:api:e2e": "bun run --cwd apps/api test:e2e",
+    "test:web": "bun run --cwd apps/web test",
+    "test:web:integration": "bun run --cwd apps/web test:integration",
+    "seed:dev-user": "bun run --cwd apps/api seed:dev-user",
+    "gcp:enable-maps": "GCP_PROJECT=gmp-demo-project-713039209 ./scripts/enable-gcp-maps-apis.sh"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0",
+    "typescript": "^5.6.0",
+    "eslint": "^9.0.0"
+  }
+}
