@@ -10,6 +10,7 @@ import {
   Route,
   TrendingUp,
 } from "lucide-react";
+import { compareInterceptRank, selectTopK } from "@routebite/shared/algorithms";
 import CountUp from "~/components/CountUp";
 import GradientText from "~/components/GradientText";
 import SpotlightCard from "~/components/SpotlightCard";
@@ -204,7 +205,7 @@ export default function Dashboard() {
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
                 {(() => {
-                  const top = [...intercepts].sort((a, b) => b.score - a.score)[0]!;
+                  const top = selectTopK(intercepts, 1, compareInterceptRank)[0]!;
                   return (
                     <>
                       <div className="flex items-center justify-between">

@@ -11,6 +11,7 @@ import {
   Loader2,
 } from "lucide-react";
 import type { ServerType } from "@routebite/shared/types";
+import { compareInterceptRank, selectTopK } from "@routebite/shared/algorithms";
 import AnimatedContent from "~/components/AnimatedContent";
 import SpotlightCard from "~/components/SpotlightCard";
 import StarBorder from "~/components/StarBorder";
@@ -68,7 +69,7 @@ export default function Intercepts() {
     );
   }
 
-  const sorted = [...intercepts].sort((a, b) => b.score - a.score);
+  const sorted = selectTopK(intercepts, intercepts.length, compareInterceptRank);
   const selectedId = selectedInterceptId ?? sorted[0]?.id ?? null;
 
   const handleOrder = () => {

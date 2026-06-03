@@ -3,10 +3,12 @@ import { logger } from 'hono/logger';
 import { cors } from 'hono/cors';
 import { serve } from '@hono/node-server';
 import { requestIdMiddleware } from './middleware/request-id';
+import { accessLogMiddleware } from './middleware/access-log';
 import { errorHandler } from './middleware/error-handler';
 import { rateLimitMiddleware } from './middleware/rate-limit';
 import { authMiddleware } from './middleware/auth';
 import { securityHeadersMiddleware } from './middleware/security-headers';
+import { structuredLogsEnabled } from './lib/security-log';
 import healthRoutes from './routes/health';
 import routeRoutes from './routes/routes';
 import interceptRoutes from './routes/intercepts';
@@ -22,7 +24,10 @@ const app = new Hono();
 
 app.use(requestIdMiddleware);
 app.use(securityHeadersMiddleware);
-app.use(logger());
+if (!structuredLogsEnabled()) {
+  app.use(logger());
+}
+app.use(accessLogMiddleware);
 app.use(cors({
   origin: process.env.WEB_ORIGIN ?? 'http://localhost:3000',
   credentials: true,

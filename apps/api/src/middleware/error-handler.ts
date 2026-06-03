@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { logSecurityEvent, SecurityEvents } from '../lib/security-log';
 export interface ApiErrorResponse {
   success: false;
   error: {
@@ -39,6 +40,14 @@ export function errorHandler(err: Error, c: Context): Response {
 
   // Validation errors (Zod)
   if (err.name === 'ZodError') {
+    logSecurityEvent({
+      event: SecurityEvents.VALIDATION_FAILED,
+      requestId,
+      method: c.req.method,
+      path: c.req.path,
+      statusCode: 400,
+      detail: { issueCount: (err as { issues?: unknown[] }).issues?.length },
+    });
     const body: ApiErrorResponse = {
       success: false,
       error: {

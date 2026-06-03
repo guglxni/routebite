@@ -1,4 +1,6 @@
 import type { LatLng } from '@routebite/shared/types';
+import { haversineMeters } from '../../../lib/geo';
+import { indexByKey } from '../../../lib/collections';
 import type { NtesRunStationRow, NtesScheduleStationRow, TrainRunSnapshot, TrainStationStop } from './types';
 import type { NtesLiveStatus, NtesSchedule, NtesTrainInfo } from './client';
 import { parseDelayMinutes } from './parse';
@@ -159,8 +161,8 @@ export function selectStationWindow(
   stations.forEach((s, i) => {
     const loc = geocoded.get(s.stationCode);
     if (!loc) return;
-    const dOrigin = haversineM(origin, loc);
-    const dDest = haversineM(destination, loc);
+    const dOrigin = haversineMeters(origin, loc);
+    const dDest = haversineMeters(destination, loc);
     if (dOrigin < bestOriginDist) {
       bestOriginDist = dOrigin;
       bestOriginIdx = i;
@@ -175,15 +177,12 @@ export function selectStationWindow(
   return { fromIndex: bestOriginIdx, toIndex: Math.max(bestOriginIdx, bestDestIdx) };
 }
 
-export function haversineM(a: LatLng, b: LatLng): number {
-  const R = 6371e3;
-  const φ1 = (a.lat * Math.PI) / 180;
-  const φ2 = (b.lat * Math.PI) / 180;
-  const Δφ = ((b.lat - a.lat) * Math.PI) / 180;
-  const Δλ = ((b.lng - a.lng) * Math.PI) / 180;
-  const x = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+export function buildStationIndex(stations: TrainStationStop[]): Map<string, TrainStationStop> {
+  return indexByKey(stations, (s) => s.stationCode);
 }
+
+/** @deprecated Import haversineMeters from lib/geo */
+export const haversineM = haversineMeters;
 
 export function encodePolyline(points: LatLng[]): string {
   let lastLat = 0;

@@ -4,6 +4,7 @@ import { RouteBiteError } from './error-handler';
 import { getDb } from '@routebite/db/client';
 import { users } from '@routebite/db/schema';
 import { eq } from 'drizzle-orm';
+import { logSecurityEvent, requestLogContext, SecurityEvents } from '../lib/security-log';
 
 const ALGO = 'aes-256-gcm';
 const KEY_LEN = 32;
@@ -62,6 +63,11 @@ export function hashSessionToken(token: string): string {
 export const authMiddleware = createMiddleware(async (c, next) => {
   const authHeader = c.req.header('Authorization');
   if (!authHeader?.startsWith('Bearer ')) {
+    logSecurityEvent({
+      event: SecurityEvents.AUTH_MISSING,
+      ...requestLogContext(c),
+      statusCode: 401,
+    });
     throw new RouteBiteError(
       'UNAUTHORIZED',
       'Missing or invalid Authorization header',
@@ -79,6 +85,11 @@ export const authMiddleware = createMiddleware(async (c, next) => {
     });
 
     if (!user) {
+      logSecurityEvent({
+        event: SecurityEvents.AUTH_INVALID,
+        ...requestLogContext(c),
+        statusCode: 401,
+      });
       throw new RouteBiteError('UNAUTHORIZED', 'Invalid or expired session', 401);
     }
 
@@ -86,6 +97,12 @@ export const authMiddleware = createMiddleware(async (c, next) => {
 
     // Check token expiry
     if (user.tokenExpiry && user.tokenExpiry < new Date()) {
+      logSecurityEvent({
+        event: SecurityEvents.AUTH_EXPIRED,
+        ...requestLogContext(c),
+        statusCode: 401,
+        userId: user.id,
+      });
       throw new RouteBiteError('UNAUTHORIZED', 'Token expired. Please re-authenticate.', 401);
     }
 
@@ -94,6 +111,12 @@ export const authMiddleware = createMiddleware(async (c, next) => {
     await next();
   } catch (err) {
     if (err instanceof RouteBiteError) throw err;
+    logSecurityEvent({
+      event: SecurityEvents.AUTH_FAILED,
+      ...requestLogContext(c),
+      statusCode: 401,
+      detail: { reason: (err as Error).message },
+    });
     throw new RouteBiteError('UNAUTHORIZED', 'Authentication failed', 401);
   }
 });

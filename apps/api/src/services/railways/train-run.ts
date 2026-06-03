@@ -7,6 +7,7 @@ import { ntesFallbackUrl, parseLiveStatus } from './ntes/parse';
 import { buildTrainRunSnapshot } from './ntes/stations';
 import type { TrainRunSnapshot } from './ntes/types';
 import type { ParsedTrainLiveStatus } from './ntes/parse';
+import { TtlLruCache } from '../../lib/ttl-lru-cache';
 
 export type TrainRunResult = ParsedTrainLiveStatus & {
   run: TrainRunSnapshot;
@@ -16,8 +17,7 @@ export type TrainRunResult = ParsedTrainLiveStatus & {
 };
 
 const CACHE_TTL_MS = 45_000;
-const MAX_CACHE_ENTRIES = 200;
-const cache = new Map<string, { expiresAt: number; value: TrainRunResult }>();
+const cache = new TtlLruCache<string, TrainRunResult>(200, CACHE_TTL_MS);
 
 let client: NtesClient | null = null;
 
@@ -38,8 +38,8 @@ export async function getTrainRun(trainNumber: string): Promise<TrainRunResult> 
 
   const fallbackUrl = ntesFallbackUrl(trainNumber);
   const cached = cache.get(trainNumber);
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.value;
+  if (cached) {
+    return cached;
   }
 
   try {
@@ -61,11 +61,7 @@ export async function getTrainRun(trainNumber: string): Promise<TrainRunResult> 
       fallbackUrl,
     };
 
-    cache.set(trainNumber, { expiresAt: Date.now() + CACHE_TTL_MS, value: result });
-    if (cache.size > MAX_CACHE_ENTRIES) {
-      const oldest = cache.keys().next().value;
-      if (oldest !== undefined) cache.delete(oldest);
-    }
+    cache.set(trainNumber, result);
     return result;
   } catch (err) {
     const message = err instanceof NTESError ? err.message : (err as Error).message;

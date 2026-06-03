@@ -39,7 +39,7 @@ Built for the [Swiggy Builders Club](https://builders.swiggy.com) MCP integratio
 | `apps/web` | React PWA — landing, dashboard, map, orders, live tracking |
 | `apps/api` | Hono API — routing, intercepts, OAuth, order placement, alignment |
 | `apps/mock-swiggy` | Local MCP server mimicking Swiggy Food + Instamart tools |
-| `packages/shared` | Shared TypeScript types |
+| `packages/shared` | Shared types, constants, algorithms (`selectTopK`, geohash grid) |
 | `packages/db` | Drizzle schema + SQLite/libSQL client |
 
 ---
@@ -127,6 +127,8 @@ bun run build
 | `GET` | `/api/v1/intercepts/:id/products` | Instamart near intercept |
 | `POST` | `/api/v1/orders` | Place order (now or auto-timed) |
 | `GET` | `/api/v1/orders/:id/track` | Live tracking + alignment score |
+| `GET` | `/api/v1/railways/:trainNumber/run` | NTES live train trajectory + halts |
+| `PATCH` | `/api/v1/routes/:journeyId/telemetry` | Live GPS + vehicle profile updates |
 | `GET` | `/api/v1/auth/authorize` | Start Swiggy OAuth (PKCE) |
 | `GET` | `/api/v1/auth/callback` | OAuth callback → session token |
 
@@ -147,11 +149,14 @@ See [`apps/api/.env.example`](apps/api/.env.example).
 | `SWIGGY_REDIRECT_URI` | Prod | OAuth redirect (must match registration) |
 | `WEB_ORIGIN` | Prod | CORS allowed origin |
 | `DATABASE_URL` | No | Default `file:./local.db` |
+| `REDIS_URL` | Prod (scale) | Distributed rate limiting |
+| `STRUCTURED_LOGS` | No | `1` = JSON access logs in dev |
 
 ---
 
 ## Documentation
 
+- [**Development log & technical reference**](docs/DEVELOPMENT.md) — features, NTES, security, algorithms
 - [Product requirements](prd.md)
 - [Technical specification](spec.md)
 - [Google Maps enhancements roadmap](docs/google-maps-enhancements.md)
@@ -162,7 +167,7 @@ See [`apps/api/.env.example`](apps/api/.env.example).
 
 ## Project status
 
-MVP with end-to-end local flow: route analysis → intercept selection → menu → order → live tracking. Mock Swiggy MCP for development; production swaps to live Swiggy MCP via env config.
+MVP with end-to-end local flow: route analysis (including NTES train journeys) → intercept selection → menu → order → live tracking with rider context. Mock Swiggy MCP for development; production swaps to live Swiggy MCP via env config.
 
 ---
 

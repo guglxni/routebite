@@ -24,6 +24,16 @@ export const INTERCEPT_SCORING = {
   },
 };
 
+/** Thresholds for heap top-k and geohash spatial indexing (see @routebite/shared/algorithms). */
+export const INTERCEPT_ALGORITHMS = {
+  /** Switch to geohash grid spacing above this candidate count. */
+  GEOHASH_SPATIAL_THRESHOLD: 100,
+  /** Use O(n log k) heap pre-filter above this pool size. */
+  TOP_K_HEAP_THRESHOLD: 50,
+  /** Pre-filter pool size multiplier before greedy spacing. */
+  TOP_K_POOL_MULTIPLIER: 10,
+} as const;
+
 export const INTERCEPT_TYPE_BONUS: Record<string, number> = {
   stop: 15,
   traffic_light: 12,

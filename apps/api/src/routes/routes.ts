@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { JourneyInputSchema } from '@routebite/shared/schemas';
@@ -7,7 +8,9 @@ import { mapsClient } from '../services/maps/client';
 import { computeInterceptPoints } from '../services/intercept/algorithm';
 import { buildTrainJourneyPlan, etaForStationIntercept } from '../services/railways/train-journey';
 import { getTrainRun } from '../services/railways/train-run';
+import { buildStationIndex } from '../services/railways/ntes/stations';
 import { parseStationCodeFromLabel } from '../services/railways/ntes/station-code';
+import { denyAccess } from '../lib/access-control';
 import { RouteBiteError } from '../middleware/error-handler';
 import { getDb } from '@routebite/db/client';
 import { journeys, intercepts } from '@routebite/db/schema';
@@ -16,6 +19,18 @@ import { eq, and } from 'drizzle-orm';
 import { GPSPositionSchema, VehicleDetailsSchema } from '@routebite/shared/schemas';
 
 const app = new Hono();
+
+async function requireJourneyOwnership(journeyId: string, userId: number, c: Context) {
+  const db = getDb();
+  const journey = await db.select().from(journeys).where(eq(journeys.id, journeyId)).get();
+  if (!journey) {
+    denyAccess(c, { resource: 'journey', resourceId: journeyId });
+  }
+  if (journey.userId !== userId) {
+    denyAccess(c, { resource: 'journey', resourceId: journeyId, ownerUserId: journey.userId });
+  }
+  return journey;
+}
 
 const AnalyzeRouteSchema = JourneyInputSchema.extend({
   origin: z.string().min(1),
@@ -185,15 +200,7 @@ app.get('/:journeyId', async (c) => {
   const user = c.get('user');
   const db = getDb();
 
-  const journey = await db
-    .select()
-    .from(journeys)
-    .where(and(eq(journeys.id, journeyId), eq(journeys.userId, user.id)))
-    .get();
-
-  if (!journey) {
-    throw new RouteBiteError('NOT_FOUND', 'Journey not found', 404);
-  }
+  const journey = await requireJourneyOwnership(journeyId, user.id, c);
 
   const interceptRows = await db
     .select()
@@ -240,15 +247,7 @@ app.get('/:journeyId/intercepts', async (c) => {
   const user = c.get('user');
   const db = getDb();
 
-  const journey = await db
-    .select()
-    .from(journeys)
-    .where(and(eq(journeys.id, journeyId), eq(journeys.userId, user.id)))
-    .get();
-
-  if (!journey) {
-    throw new RouteBiteError('NOT_FOUND', 'Journey not found', 404);
-  }
+  const journey = await requireJourneyOwnership(journeyId, user.id, c);
 
   const points = await db
     .select()
@@ -272,6 +271,8 @@ app.get('/:journeyId/intercepts', async (c) => {
     }
   }
 
+  const stationIndex = liveRun ? buildStationIndex(liveRun.run.stations) : undefined;
+
   return c.json({
     success: true,
     data: points.map(p => ({
@@ -284,7 +285,7 @@ app.get('/:journeyId/intercepts', async (c) => {
       restaurantCount: p.restaurantCount ?? 0,
       safetyRating: p.safetyRating ?? 3,
       name: p.name ?? undefined,
-      etaSeconds: liveRun ? etaForStationIntercept(liveRun.run, p.name) : undefined,
+      etaSeconds: stationIndex ? etaForStationIntercept(liveRun!.run, p.name, stationIndex) : undefined,
       stationCode: parseStationCodeFromLabel(p.name),
     })),
   });
@@ -330,15 +331,7 @@ app.patch('/:journeyId/telemetry', zValidator('json', TelemetrySchema), async (c
   const body = c.req.valid('json');
   const db = getDb();
 
-  const journey = await db
-    .select()
-    .from(journeys)
-    .where(and(eq(journeys.id, journeyId), eq(journeys.userId, user.id)))
-    .get();
-
-  if (!journey) {
-    throw new RouteBiteError('NOT_FOUND', 'Journey not found', 404);
-  }
+  const journey = await requireJourneyOwnership(journeyId, user.id, c);
 
   const merged = mergeVehicleDetails(journey.vehicleDetailsJson, body);
 

@@ -1,5 +1,6 @@
 import type { LatLng } from '@routebite/shared/types';
 import { MAPS_CONFIG } from '@routebite/shared/constants';
+import { toGridKey } from '../../lib/geo';
 import {
   GOOGLE_PLACES_AGGREGATE_BASE,
   GOOGLE_PLACES_NEARBY_BASE,
@@ -59,7 +60,7 @@ export class PlacesInsightsClient {
     const seen = new Set<string>();
 
     for (const point of points) {
-      const gridKey = `${point.lat.toFixed(3)},${point.lng.toFixed(3)}`;
+      const gridKey = toGridKey(point.lat, point.lng, 3);
       if (seen.has(gridKey)) continue;
       seen.add(gridKey);
       const count = await this.countRestaurantsNear(point, radiusM);
@@ -70,7 +71,7 @@ export class PlacesInsightsClient {
   }
 
   resolveCountForPoint(point: LatLng, gridCounts: Map<string, number>): number {
-    const gridKey = `${point.lat.toFixed(3)},${point.lng.toFixed(3)}`;
+    const gridKey = toGridKey(point.lat, point.lng, 3);
     return gridCounts.get(gridKey) ?? fallbackRestaurantCount(point);
   }
 

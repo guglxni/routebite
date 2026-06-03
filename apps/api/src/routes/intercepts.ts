@@ -1,9 +1,11 @@
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import { eq, and } from 'drizzle-orm';
 import { getDb } from '@routebite/db/client';
 import { intercepts, journeys } from '@routebite/db/schema';
 import { SwiggyMCPClient } from '../services/swiggy/client';
 import { RouteBiteError } from '../middleware/error-handler';
+import { denyAccess } from '../lib/access-control';
 
 const app = new Hono();
 
@@ -11,7 +13,7 @@ const app = new Hono();
  * Verify the authenticated user owns the journey that contains this intercept.
  * Returns the intercept row if authorized, throws 404 to prevent IDOR probing.
  */
-async function requireInterceptOwnership(interceptId: string, userId: number) {
+async function requireInterceptOwnership(interceptId: string, userId: number, c: Context) {
   const db = getDb();
   const point = await db
     .select()
@@ -20,18 +22,21 @@ async function requireInterceptOwnership(interceptId: string, userId: number) {
     .get();
 
   if (!point) {
-    throw new RouteBiteError('NOT_FOUND', 'Intercept not found', 404);
+    denyAccess(c, { resource: 'intercept', resourceId: interceptId });
   }
 
-  // Verify the journey belongs to the requesting user
   const journey = await db
     .select()
     .from(journeys)
-    .where(and(eq(journeys.id, point.journeyId), eq(journeys.userId, userId)))
+    .where(eq(journeys.id, point.journeyId))
     .get();
 
-  if (!journey) {
-    throw new RouteBiteError('NOT_FOUND', 'Intercept not found', 404);
+  if (!journey || journey.userId !== userId) {
+    denyAccess(c, {
+      resource: 'intercept',
+      resourceId: interceptId,
+      ownerUserId: journey?.userId ?? undefined,
+    });
   }
 
   return point;
@@ -43,7 +48,7 @@ app.get('/:id/restaurants', async (c) => {
   const token = c.get('accessToken');
   const user = c.get('user');
 
-  const point = await requireInterceptOwnership(id, user.id);
+  const point = await requireInterceptOwnership(id, user.id, c);
 
   const client = new SwiggyMCPClient(token);
   const res = await client.searchRestaurants({
@@ -71,7 +76,7 @@ app.get('/:id/menu/:restaurantId', async (c) => {
   const token = c.get('accessToken');
   const user = c.get('user');
 
-  await requireInterceptOwnership(id, user.id);
+  await requireInterceptOwnership(id, user.id, c);
 
   const client = new SwiggyMCPClient(token);
   const res = await client.getMenu({ restaurantId });
@@ -97,7 +102,7 @@ app.get('/:id/products', async (c) => {
   const token = c.get('accessToken');
   const user = c.get('user');
 
-  const point = await requireInterceptOwnership(id, user.id);
+  const point = await requireInterceptOwnership(id, user.id, c);
 
   const client = new SwiggyMCPClient(token);
   const res = await client.searchInstamartProducts({

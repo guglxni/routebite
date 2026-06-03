@@ -5,6 +5,7 @@ import type { JourneyRoute } from '../maps/types';
 import { mapsClient } from '../maps/client';
 import { weatherClient, applyWeatherToSafetyRating } from '../weather/client';
 import { adjustDwellForTraffic, detectTollCandidatesFromRoute } from './traffic';
+import { haversineMeters } from '../../lib/geo';
 
 export interface EnrichmentOptions {
   transportMode: TransportMode;
@@ -85,7 +86,7 @@ function mergeTollCandidatesFromRoute(
   const merged = [...candidates];
   for (const toll of tollPoints) {
     const exists = merged.some(
-      c => haversineM(c, toll) < 200 && c.type === 'toll_plaza'
+      c => haversineMeters(c, toll) < 200 && c.type === 'toll_plaza'
     );
     if (!exists) {
       merged.push({
@@ -98,12 +99,3 @@ function mergeTollCandidatesFromRoute(
   return merged;
 }
 
-function haversineM(a: LatLng, b: LatLng): number {
-  const R = 6371e3;
-  const φ1 = (a.lat * Math.PI) / 180;
-  const φ2 = (b.lat * Math.PI) / 180;
-  const Δφ = ((b.lat - a.lat) * Math.PI) / 180;
-  const Δλ = ((b.lng - a.lng) * Math.PI) / 180;
-  const x = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
-}

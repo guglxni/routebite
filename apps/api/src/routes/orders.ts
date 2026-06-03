@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { eq, desc } from 'drizzle-orm';
@@ -10,6 +11,7 @@ import { computeAlignment } from '../services/tracking/alignment';
 import { startPolling } from '../services/tracking/poller';
 import { loadCustomerContextForOrder } from '../services/tracking/customer-context';
 import { RouteBiteError } from '../middleware/error-handler';
+import { denyAccess } from '../lib/access-control';
 
 const app = new Hono();
 
@@ -38,11 +40,18 @@ const PlaceOrderSchema = z.object({
  * Verify the authenticated user owns the requested order.
  * Returns the order row if authorized, throws 404 (not 403) to prevent IDOR probing.
  */
-async function requireOrderOwnership(orderId: string, userId: number) {
+async function requireOrderOwnership(
+  orderId: string,
+  userId: number,
+  c: Context
+) {
   const db = getDb();
   const order = await db.select().from(orders).where(eq(orders.id, orderId)).get();
-  if (!order || order.userId !== userId) {
-    throw new RouteBiteError('NOT_FOUND', 'Order not found', 404);
+  if (!order) {
+    denyAccess(c, { resource: 'order', resourceId: orderId });
+  }
+  if (order.userId !== userId) {
+    denyAccess(c, { resource: 'order', resourceId: orderId, ownerUserId: order.userId });
   }
   return order;
 }
@@ -82,7 +91,7 @@ app.get('/', async (c) => {
 app.get('/:id', async (c) => {
   const id = c.req.param('id');
   const user = c.get('user');
-  const order = await requireOrderOwnership(id, user.id);
+  const order = await requireOrderOwnership(id, user.id, c);
   return c.json({ success: true, data: order });
 });
 
@@ -92,7 +101,7 @@ app.get('/:id/track', async (c) => {
   const token = c.get('accessToken');
   const user = c.get('user');
 
-  const order = await requireOrderOwnership(id, user.id);
+  const order = await requireOrderOwnership(id, user.id, c);
 
   if (!order.swiggyOrderId) {
     return c.json({
@@ -175,7 +184,7 @@ app.get('/:id/tracking-history', async (c) => {
   const user = c.get('user');
 
   // Ownership check
-  await requireOrderOwnership(id, user.id);
+  await requireOrderOwnership(id, user.id, c);
 
   const db = getDb();
   const events = await db
@@ -206,7 +215,7 @@ app.delete('/:id', async (c) => {
   const user = c.get('user');
   const db = getDb();
 
-  const order = await requireOrderOwnership(id, user.id);
+  const order = await requireOrderOwnership(id, user.id, c);
 
   // Only cancel if pending or confirmed
   if (!['pending', 'confirmed'].includes(order.status)) {

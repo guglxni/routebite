@@ -1,4 +1,6 @@
 import type { TransportMode } from '@routebite/shared/types';
+import { INTERCEPT_ALGORITHMS } from '@routebite/shared/constants';
+import { GeohashSpatialIndex } from '@routebite/shared/algorithms';
 import type { JourneyRoute } from '../maps/types';
 import { mapsClient } from '../maps/client';
 import type { CandidatePoint, ScoredInterceptPoint, RouteAnalysisInput, InterceptConfig } from './types';
@@ -98,12 +100,17 @@ export function extractCandidates(
   // ─── Fallback: evenly spaced points ─────────────────
   const totalDistance = distanceAlongRoute(routePoints[routePoints.length - 1], routePoints);
   const spacing = totalDistance / 8; // aim for ~8 points
+  const useSpatialDedup = candidates.length > INTERCEPT_ALGORITHMS.GEOHASH_SPATIAL_THRESHOLD;
+  const dedupGrid = useSpatialDedup ? new GeohashSpatialIndex(300) : null;
+  if (dedupGrid) {
+    for (const c of candidates) dedupGrid.add(c.lat, c.lng);
+  }
 
   for (let dist = spacing; dist < totalDistance; dist += spacing) {
     const point = interpolateAlongRoute(dist, routePoints);
-    const tooClose = candidates.some(
-      c => haversineDistance(point, c) < 300
-    );
+    const tooClose = dedupGrid
+      ? dedupGrid.hasWithin(point.lat, point.lng, 300)
+      : candidates.some((c) => haversineDistance(point, c) < 300);
     if (!tooClose) {
       candidates.push({
         lat: point.lat,
@@ -114,6 +121,7 @@ export function extractCandidates(
         safetyRating: 3,
         restaurantCount: estimateRestaurantCount(point),
       });
+      dedupGrid?.add(point.lat, point.lng);
     }
   }
 

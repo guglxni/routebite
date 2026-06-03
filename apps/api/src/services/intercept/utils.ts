@@ -1,23 +1,8 @@
 import type { LatLng } from '@routebite/shared/types';
+import { haversineMeters } from '../../lib/geo';
 
-/**
- * Haversine distance between two points in meters.
- */
-export function haversineDistance(a: LatLng, b: LatLng): number {
-  const R = 6371e3; // Earth radius in meters
-  const φ1 = (a.lat * Math.PI) / 180;
-  const φ2 = (b.lat * Math.PI) / 180;
-  const Δφ = ((b.lat - a.lat) * Math.PI) / 180;
-  const deltaLambda = ((b.lng - a.lng) * Math.PI) / 180;
-
-  const sinΔφ = Math.sin(Δφ / 2);
-  const sindeltaLambda = Math.sin(deltaLambda / 2);
-
-  const x = sinΔφ * sinΔφ + Math.cos(φ1) * Math.cos(φ2) * sindeltaLambda * sindeltaLambda;
-  const c = 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
-
-  return R * c;
-}
+/** @deprecated Use haversineMeters from lib/geo — kept for intercept module imports. */
+export const haversineDistance = haversineMeters;
 
 /**
  * Project a point onto the route polyline and return:

@@ -8,16 +8,15 @@ import { scoreInterceptPoint, filterAndRankPoints } from '../intercept/scoring';
 import type { ScoredInterceptPoint } from '../intercept/types';
 import { getTrainRun } from './train-run';
 import {
+  buildStationIndex,
   encodePolyline,
   haversineM,
   selectStationWindow,
 } from './ntes/stations';
 import { parseStationCodeFromLabel } from './ntes/station-code';
 import type { TrainStationStop, TrainRunSnapshot } from './ntes/types';
-import { LruCache } from '../../lib/lru-cache';
 
 const MIN_HALT_SECONDS = 3 * 60;
-const geocodeCache = new LruCache<string, LatLng>(512);
 
 export type TrainJourneyPlan = {
   routePoints: LatLng[];
@@ -29,14 +28,9 @@ export type TrainJourneyPlan = {
 };
 
 async function geocodeStation(stop: TrainStationStop): Promise<LatLng | undefined> {
-  const cached = geocodeCache.get(stop.stationCode);
-  if (cached) return cached;
-
   const query = `${stop.stationName} ${stop.stationCode} railway station India`;
   try {
-    const loc = await mapsClient.geocode(query);
-    geocodeCache.set(stop.stationCode, loc);
-    return loc;
+    return await mapsClient.geocode(query);
   } catch {
     return undefined;
   }
@@ -88,21 +82,23 @@ export async function buildTrainJourneyPlan(opts: {
       ? Math.max(lastStop.etaSeconds - firstStop.etaSeconds, trainRun.stations[toIndex]?.etaSeconds ?? 3600)
       : Math.round(distanceMeters / 20_000 * 3600);
 
+  const eligibleStops = windowStations.filter(
+    (stop) => !stop.passed && stop.haltSeconds >= MIN_HALT_SECONDS && geocoded.has(stop.stationCode)
+  );
+  const eligibleLocs = eligibleStops.map((stop) => geocoded.get(stop.stationCode)!);
+
+  let restaurantCounts = new Map<string, number>();
+  try {
+    restaurantCounts = await mapsClient.countRestaurantsForPoints(eligibleLocs, 800);
+  } catch {
+    // heuristic fallback per stop below
+  }
+
   const candidates: ScoredInterceptPoint[] = [];
 
-  for (const stop of windowStations) {
-    if (stop.passed) continue;
-    if (stop.haltSeconds < MIN_HALT_SECONDS) continue;
-
-    const loc = geocoded.get(stop.stationCode);
-    if (!loc) continue;
-
-    let restaurantCount = 5;
-    try {
-      restaurantCount = await mapsClient.countRestaurantsNear(loc, 800);
-    } catch {
-      // heuristic fallback
-    }
+  for (const stop of eligibleStops) {
+    const loc = geocoded.get(stop.stationCode)!;
+    const restaurantCount = mapsClient.resolveRestaurantCount(loc, restaurantCounts);
 
     const distFromStart = routePoints.length > 0
       ? haversineM(routePoints[0], loc)
@@ -144,12 +140,14 @@ export async function buildTrainJourneyPlan(opts: {
   };
 }
 
-/** Resolve live ETA seconds for an intercept at a railway station. */
+/** Resolve live ETA seconds for an intercept at a railway station — O(1) with index. */
 export function etaForStationIntercept(
   trainRun: TrainRunSnapshot,
-  interceptName?: string | null
+  interceptName?: string | null,
+  stationIndex?: Map<string, TrainStationStop>
 ): number | undefined {
   const code = parseStationCodeFromLabel(interceptName);
   if (!code) return undefined;
-  return trainRun.stations.find((s) => s.stationCode === code)?.etaSeconds;
+  const index = stationIndex ?? buildStationIndex(trainRun.stations);
+  return index.get(code)?.etaSeconds;
 }
