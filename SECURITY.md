@@ -25,6 +25,8 @@ We aim to acknowledge reports within 72 hours.
 - **Authorization:** Resource endpoints enforce user ownership (orders, journeys, intercepts)
 - **Input validation:** Zod schemas on all API inputs; Drizzle ORM parameterized queries
 - **Headers:** HSTS (production), CSP, X-Frame-Options, nosniff (see `security-headers.ts`)
+- **Rate limiting:** Token-bucket per IP; set `REDIS_URL` for multi-instance deployments
+- **Logging:** Structured JSON security events and access logs in production (`STRUCTURED_LOGS=1` in dev)
 - **Errors:** Fail-closed; no stack traces in API responses
 
 Full OWASP Top 10 audit: [`apps/api/SECURITY_AUDIT.md`](apps/api/SECURITY_AUDIT.md)

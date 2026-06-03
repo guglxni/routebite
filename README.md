@@ -39,7 +39,7 @@ Built for the [Swiggy Builders Club](https://builders.swiggy.com) MCP integratio
 | `apps/web` | React PWA — landing, dashboard, map, orders, live tracking |
 | `apps/api` | Hono API — routing, intercepts, OAuth, order placement, alignment |
 | `apps/mock-swiggy` | Local MCP server mimicking Swiggy Food + Instamart tools |
-| `packages/shared` | Shared types, constants, algorithms (`selectTopK`, geohash grid) |
+| `packages/shared` | Shared types, constants, algorithms |
 | `packages/db` | Drizzle schema + SQLite/libSQL client |
 
 ---
@@ -134,6 +134,8 @@ bun run build
 
 All protected routes require `Authorization: Bearer <session_token>`.
 
+Train mode uses NTES (Indian Railways) for live station halts and intercept ETAs when `transportMode=train` and a 5-digit train number is set.
+
 ---
 
 ## Environment variables
@@ -156,12 +158,9 @@ See [`apps/api/.env.example`](apps/api/.env.example).
 
 ## Documentation
 
-- [**Development log & technical reference**](docs/DEVELOPMENT.md) — features, NTES, security, algorithms
-- [Product requirements](prd.md)
-- [Technical specification](spec.md)
-- [Google Maps enhancements roadmap](docs/google-maps-enhancements.md)
-- [Security audit (OWASP)](apps/api/SECURITY_AUDIT.md)
-- [Security policy](SECURITY.md)
+- [Product spec](spec.md) · [PRD](prd.md)
+- [Security policy](SECURITY.md) · [OWASP audit](apps/api/SECURITY_AUDIT.md)
+- [Google Maps roadmap](docs/google-maps-enhancements.md)
 
 ---
 

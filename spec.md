@@ -1,6 +1,6 @@
 # RouteBite — Product Specification
 
-> **Status**: Inception Phase  
+> **Status**: MVP shipped on `main`  
 > **Goal**: Get hired by Swiggy via Builders Club by building something genuinely impressive on Swiggy MCP  
 > **Servers**: Food + Instamart (Dineout excluded — travelers can't dine-out while en route)  
 
@@ -492,6 +492,15 @@ Unified view: Both arriving at Neemrana. Pick up together.
 │ Geocoding API    │  │                    │  │  → mcp.swiggy.com  │
 └──────────────────┘  └────────────────────┘  └────────────────────┘
 ```
+
+### 8.1 Implementation status (MVP)
+
+Shipped on `main` (see [README](README.md) for run instructions):
+
+- **Intercept engine** — Google Routes + Places/Weather enrichment; shared `@routebite/shared/algorithms` (`selectTopK`, geohash spacing) for ranking at scale
+- **Train journeys** — Native TypeScript NTES client (`apps/api/src/services/railways/ntes/`); station halts drive intercepts and live ETAs
+- **Orders & tracking** — Swiggy MCP placement, rider brief on vehicle profile, customer context + alignment on `/orders/:id/track`
+- **Security** — PKCE OAuth, AES-256-GCM tokens, IDOR-safe ownership checks, Redis-ready rate limit, structured security/access logs ([SECURITY.md](SECURITY.md), [apps/api/SECURITY_AUDIT.md](apps/api/SECURITY_AUDIT.md))
 
 ---
 

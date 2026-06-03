@@ -1,7 +1,7 @@
 # Google Maps Platform Enhancements — RouteBite
 
-**Status:** Planned  
-**Last updated:** 2026-06-01  
+**Status:** Partially implemented (MVP on `main`)  
+**Last updated:** 2026-06-03  
 **Scope:** Integrate modern Google Maps Platform APIs to improve intercept scoring, restaurant discovery, journey–delivery alignment, and map UX.
 
 ---
@@ -76,27 +76,28 @@ Location: `apps/api/src/services/maps/`
 |-----|-------------------|----------|
 | Routes API v2 | `computeRoutes` | Journey polyline, steps, transit stop details |
 | Route Matrix API | `computeRouteMatrix` | Rider travel time for order timing, restaurant ranking |
-| Geocoding API | `geocode` / `reverseGeocode` | Address validation, intercept delivery addresses |
+| Geocoding API | `geocode` / `reverseGeocode` | Address validation, station geocoding (trains) |
+| Places Aggregate / Nearby | `countRestaurantsNear` | Intercept restaurant density (`enrichment.ts`) |
+| Weather API | hourly + alerts | Intercept safety scoring (`weather/client.ts`) |
 | Roads API | `snapToRoads` | Snap intercept points to drivable geometry |
 | Roads API | `getSpeedLimits` | Available but underutilized |
 | Address Validation API | `validateAddress` | Origin/destination typo catching on route analyze |
 
 Supporting infrastructure:
 
-- `SimpleLRUCache` — route, geocode, matrix, roads, address validation caches (`apps/api/src/services/maps/cache.ts`)
+- `TtlLruCache` — route, geocode, matrix, roads, places, weather caches (`apps/api/src/lib/ttl-lru-cache.ts`, wired in `maps/cache.ts`)
+- Intercept ranking — `@routebite/shared/algorithms` (`selectTopK`, `GeohashSpatialIndex`) when candidate pools are large
 - Transport mode mapping with `TRAFFIC_AWARE_OPTIMAL` for car/bike (`apps/api/src/services/maps/constants.ts`)
+- **Train mode** — NTES live run (not Google Transit); see `apps/api/src/services/railways/`
 
-### Known gaps (placeholders / missing)
+### Known gaps (remaining roadmap)
 
 | Gap | Current behavior | File |
 |-----|------------------|------|
-| Restaurant density at intercept | Deterministic hash of lat/lng (1–15 fake count) | `apps/api/src/services/intercept/algorithm.ts` → `estimateRestaurantCount()` |
-| Traffic on route polyline | Types defined (`TravelAdvisory`) but not requested | `apps/api/src/services/maps/types.ts`, `client.ts` |
-| Toll detection | Parsed from navigation instruction strings | `apps/api/src/services/intercept/algorithm.ts` |
-| Customer live ETA | Not implemented; poller uses Swiggy-reported ETAs only | `apps/api/src/services/tracking/poller.ts` |
-| Route optimization | Custom brute-force / greedy TSP (~200 lines) | `apps/api/src/services/route-optimization/index.ts` |
-| Map visualization | No map in web app; demo place list in RouteBuilder | `apps/web/src/pages/RouteBuilder.tsx` |
-| Weather / environmental factors | Not considered in intercept safety scoring | — |
+| Traffic on route polyline | Types defined; optional via `ROUTES_EXTRA_COMPUTATIONS` | `apps/api/src/services/maps/client.ts` |
+| Customer live ETA | Swiggy + NTES/train context; browser GPS via telemetry PATCH | `apps/api/src/services/tracking/` |
+| Route optimization | Brute-force / greedy TSP via Routes API | `apps/api/src/services/route-optimization/index.ts` |
+| Map UX polish | MapLibre journey map shipped; 3D / UI Kit not integrated | `apps/web/src/components/map/` |
 
 ---
 
