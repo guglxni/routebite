@@ -1,6 +1,7 @@
 {
   "name": "routebite",
   "private": true,
+  "license": "UNLICENSED",
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
     "dev": "concurrently \"bun run --cwd apps/api dev\" \"bun run --cwd apps/mock-swiggy dev\" \"bun run --cwd apps/web dev\"",

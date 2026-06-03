@@ -172,4 +172,4 @@ MVP with end-to-end local flow: route analysis (including NTES train journeys) �
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Proprietary — all rights reserved. See [LICENSE](LICENSE). Commercial use, redistribution, and sublicensing require written permission from the copyright holder.
