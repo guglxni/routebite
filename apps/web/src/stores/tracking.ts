@@ -3,6 +3,7 @@ import type { OrderStatus, VehicleDetails } from "@routebite/shared/types";
 import { getOrderTrack, getOrderTrackingHistory } from "../lib/api";
 
 export interface CustomerContext {
+  journeyId?: string;
   transportMode: string;
   vehicleDetails: VehicleDetails;
   riderBrief: string;
@@ -17,6 +18,7 @@ export interface CustomerContext {
   liveLocation?: { lat: number; lng: number; accuracy?: number; timestamp: number };
   customerPosition?: { lat: number; lng: number };
   customerETA?: number;
+  etaFromLiveGps?: boolean;
 }
 
 export interface TrackingSnapshot {
@@ -35,7 +37,41 @@ export interface TrackingSnapshot {
     orderReadyTime: number;
     recommendation?: string;
     score: number;
+    riderOutsideIsochrone?: boolean;
   } | null;
+  dualClock?: {
+    customerETA: number | null;
+    riderETA: number | null;
+    mapsRiderETA: number | null;
+    swiggyRiderETA: number | null;
+    deltaSeconds: number | null;
+    honesty: { swiggyDistanceKm: number | null; mapsBikeSeconds: number | null; note: string };
+    clocks: {
+      you: { label: string; etaSeconds: number | null };
+      rider: { label: string; etaSeconds: number | null };
+      kitchen: { label: string; etaSeconds: number | null };
+    };
+  };
+  reIntercept?: {
+    shouldSwitch: boolean;
+    reason: string;
+    recommendedInterceptId: string | null;
+    recommendedName: string | null;
+    actions: string[];
+  } | null;
+  deferred?: {
+    timingType: string;
+    autoPlaceAt: string | null;
+    placeAttempts: number;
+    lastPlaceError: string | null;
+    mealQueryHint: string | null;
+    haltGate: {
+      ok: boolean;
+      severity: string;
+      message: string;
+      recommendation?: string;
+    } | null;
+  };
   raw?: unknown;
 }
 

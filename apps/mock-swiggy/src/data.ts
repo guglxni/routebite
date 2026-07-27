@@ -1,14 +1,14 @@
 import crypto from "crypto";
 
 export const restaurants = [
-  { id: "res_1", name: "Biryani Blues", cuisine: ["Biryani", "North Indian"], rating: 4.3, ratingCount: 2300, costForTwo: 400, availabilityStatus: "OPEN", deliveryTime: "30-40 min", address: "Sector 18, Noida" },
-  { id: "res_2", name: "Pizza Hut", cuisine: ["Pizza", "Fast Food"], rating: 4.1, ratingCount: 5400, costForTwo: 500, availabilityStatus: "OPEN", deliveryTime: "25-35 min", address: "DLF Mall, Noida" },
-  { id: "res_3", name: "Haldiram's", cuisine: ["North Indian", "South Indian", "Street Food"], rating: 4.5, ratingCount: 8900, costForTwo: 350, availabilityStatus: "OPEN", deliveryTime: "20-30 min", address: "Connaught Place, Delhi" },
-  { id: "res_4", name: "Subway", cuisine: ["Healthy Food", "Fast Food"], rating: 3.9, ratingCount: 1200, costForTwo: 300, availabilityStatus: "OPEN", deliveryTime: "15-25 min", address: "Rajiv Chowk Metro, Delhi" },
-  { id: "res_5", name: "Sagar Ratna", cuisine: ["South Indian"], rating: 4.4, ratingCount: 3100, costForTwo: 450, availabilityStatus: "OPEN", deliveryTime: "30-40 min", address: "Karol Bagh, Delhi" },
-  { id: "res_6", name: "Karim's", cuisine: ["Mughlai", "North Indian"], rating: 4.6, ratingCount: 6700, costForTwo: 600, availabilityStatus: "OPEN", deliveryTime: "40-50 min", address: "Jama Masjid, Delhi" },
-  { id: "res_7", name: "Wow! Momo", cuisine: ["Momos", "Chinese"], rating: 4.2, ratingCount: 4200, costForTwo: 250, availabilityStatus: "OPEN", deliveryTime: "20-30 min", address: "Lajpat Nagar, Delhi" },
-  { id: "res_8", name: "KFC", cuisine: ["Burger", "Fast Food"], rating: 4.0, ratingCount: 7800, costForTwo: 450, availabilityStatus: "CLOSED", deliveryTime: "25-35 min", address: "Ambience Mall, Gurgaon" },
+  { id: "res_1", name: "Biryani Blues", cuisine: ["Biryani", "North Indian"], rating: 4.3, ratingCount: 2300, costForTwo: 400, availabilityStatus: "OPEN", deliveryTime: "30-40 min", address: "Sector 18, Noida", lat: 28.5701, lng: 77.3219, distanceKm: 1.2 },
+  { id: "res_2", name: "Pizza Hut", cuisine: ["Pizza", "Fast Food"], rating: 4.1, ratingCount: 5400, costForTwo: 500, availabilityStatus: "OPEN", deliveryTime: "25-35 min", address: "DLF Mall, Noida", lat: 28.5672, lng: 77.3210, distanceKm: 1.5 },
+  { id: "res_3", name: "Haldiram's", cuisine: ["North Indian", "South Indian", "Street Food"], rating: 4.5, ratingCount: 8900, costForTwo: 350, availabilityStatus: "OPEN", deliveryTime: "20-30 min", address: "Connaught Place, Delhi", lat: 28.6315, lng: 77.2167, distanceKm: 2.1 },
+  { id: "res_4", name: "Subway", cuisine: ["Healthy Food", "Fast Food"], rating: 3.9, ratingCount: 1200, costForTwo: 300, availabilityStatus: "OPEN", deliveryTime: "15-25 min", address: "Rajiv Chowk Metro, Delhi", lat: 28.6328, lng: 77.2197, distanceKm: 0.8 },
+  { id: "res_5", name: "Sagar Ratna", cuisine: ["South Indian"], rating: 4.4, ratingCount: 3100, costForTwo: 450, availabilityStatus: "OPEN", deliveryTime: "30-40 min", address: "Karol Bagh, Delhi", lat: 28.6517, lng: 77.1909, distanceKm: 3.4 },
+  { id: "res_6", name: "Karim's", cuisine: ["Mughlai", "North Indian"], rating: 4.6, ratingCount: 6700, costForTwo: 600, availabilityStatus: "OPEN", deliveryTime: "40-50 min", address: "Jama Masjid, Delhi", lat: 28.6507, lng: 77.2334, distanceKm: 4.2 },
+  { id: "res_7", name: "Wow! Momo", cuisine: ["Momos", "Chinese"], rating: 4.2, ratingCount: 4200, costForTwo: 250, availabilityStatus: "OPEN", deliveryTime: "20-30 min", address: "Lajpat Nagar, Delhi", lat: 28.5677, lng: 77.2433, distanceKm: 2.8 },
+  { id: "res_8", name: "KFC", cuisine: ["Burger", "Fast Food"], rating: 4.0, ratingCount: 7800, costForTwo: 450, availabilityStatus: "CLOSED", deliveryTime: "25-35 min", address: "Ambience Mall, Gurgaon", lat: 28.5035, lng: 77.0970, distanceKm: 18.5 },
 ];
 
 export const menuItems: Record<string, any[]> = {

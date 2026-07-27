@@ -1,0 +1,31 @@
+# Runtime-only image: expects apps/web/dist prebuilt on the host (FinOps: no Vite on micro).
+FROM oven/bun:1.2-alpine
+WORKDIR /app
+ENV NODE_ENV=production \
+    PORT=8080 \
+    SERVE_WEB=1 \
+    WEB_DIST=/app/apps/web/dist \
+    DATABASE_URL=file:/data/routebite.db \
+    SWIGGY_MCP_BASE=http://127.0.0.1:8788
+
+COPY package.json bun.lock ./
+COPY apps/api/package.json apps/api/
+COPY apps/web/package.json apps/web/
+COPY apps/mock-swiggy/package.json apps/mock-swiggy/
+COPY packages/shared/package.json packages/shared/
+COPY packages/db/package.json packages/db/
+RUN bun install --frozen-lockfile --production
+
+COPY packages/shared packages/shared
+COPY packages/db packages/db
+COPY apps/api/src apps/api/src
+COPY apps/api/tsconfig.json apps/api/tsconfig.json
+COPY apps/mock-swiggy/src apps/mock-swiggy/src
+COPY apps/mock-swiggy/tsconfig.json apps/mock-swiggy/tsconfig.json
+COPY apps/web/dist apps/web/dist
+COPY scripts/runtime-entrypoint.sh /app/scripts/runtime-entrypoint.sh
+RUN chmod +x /app/scripts/runtime-entrypoint.sh
+
+VOLUME ["/data"]
+EXPOSE 8080
+CMD ["/app/scripts/runtime-entrypoint.sh"]

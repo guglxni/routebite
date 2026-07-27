@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { eq, desc } from 'drizzle-orm';
 import { getDb } from '@routebite/db/client';
 import { orders, journeys } from '@routebite/db/schema';
+import { portalHomePath } from '../services/auth/portal-accounts';
 
 const app = new Hono();
 
@@ -12,6 +13,11 @@ app.get('/me', async (c) => {
     success: true,
     data: {
       id: user.id,
+      role: user.role,
+      username: user.username,
+      name: user.name,
+      email: user.email,
+      homePath: portalHomePath(user.role),
     },
   });
 });
@@ -28,7 +34,6 @@ app.get('/orders', async (c) => {
     .orderBy(desc(orders.createdAt))
     .all();
 
-  // Enrich with journey details
   const enriched = await Promise.all(
     userOrders.map(async (order) => {
       if (!order.journeyId) return { ...order, journey: null };

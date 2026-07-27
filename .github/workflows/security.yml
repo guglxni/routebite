@@ -1,0 +1,52 @@
+# DevSecOps baseline: dependency audit + secret scan on PRs/pushes.
+name: security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 3 * * 1" # weekly
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  secret-scan:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  audit:
+    name: bun audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+      - run: bun install --frozen-lockfile
+      - name: Dependency advisory scan
+        run: |
+          set +e
+          bun audit --json > /tmp/bun-audit.json 2>/tmp/bun-audit.err
+          code=$?
+          set -e
+          if [[ "$code" -eq 0 ]]; then
+            echo "bun audit: clean"
+            exit 0
+          fi
+          echo "::warning::bun audit reported findings (exit $code) — review /tmp artifacts in logs"
+          cat /tmp/bun-audit.err || true
+          # Soft-fail for advisory noise until package owners ship fixes; still surfaces in Actions log.
+          exit 0

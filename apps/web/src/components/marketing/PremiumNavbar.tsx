@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { Home, LayoutDashboard, Package, LogOut, Menu, X } from "lucide-react";
+import { Home, LayoutDashboard, LogOut, Menu, X } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "~/stores/auth";
 import { useProtectedNavigate } from "~/hooks/use-protected-navigate";
@@ -9,12 +9,11 @@ import { cn } from "~/lib/utils";
 
 const links = [
   { to: "/", label: "Home", icon: Home, protected: false },
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, protected: true },
-  { to: "/orders", label: "Orders", icon: Package, protected: true },
+  { to: "/login", label: "Portal", icon: LayoutDashboard, protected: false },
 ];
 
 export function PremiumNavbar() {
-  const { user, logout, devLogin } = useAuth();
+  const { user, logout } = useAuth();
   const goProtected = useProtectedNavigate();
   const loc = useLocation();
   const [open, setOpen] = useState(false);
@@ -67,7 +66,14 @@ export function PremiumNavbar() {
         <div className="hidden items-center gap-2 md:flex">
           {user ? (
             <>
-              <span className="text-xs text-zinc-500">User #{user.id}</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-zinc-300 capitalize"
+                onClick={() => void goProtected()}
+              >
+                {user.role} #{user.id}
+              </Button>
               <Button variant="ghost" size="icon-sm" onClick={logout} aria-label="Sign out">
                 <LogOut className="size-4" />
               </Button>
@@ -78,19 +84,16 @@ export function PremiumNavbar() {
                 variant="ghost"
                 size="sm"
                 className="text-zinc-300 hover:text-white"
-                onClick={() => {
-                  devLogin();
-                  goProtected("/dashboard");
-                }}
+                render={<Link to="/login" />}
               >
-                Dev login
+                Sign in
               </Button>
               <Button
                 size="sm"
                 className="bg-amber font-semibold text-void hover:bg-amber-light"
-                onClick={() => goProtected("/dashboard")}
+                render={<Link to="/login" />}
               >
-                Open dashboard
+                Open portal
               </Button>
             </>
           )}

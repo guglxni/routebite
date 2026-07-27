@@ -4,6 +4,7 @@ import type { GPSPosition } from "@routebite/shared/types";
 type UseLiveLocationOptions = {
   enabled: boolean;
   onUpdate?: (position: GPSPosition) => void;
+  /** Min gap between onUpdate calls (map position still updates more often). */
   intervalMs?: number;
 };
 
@@ -17,6 +18,7 @@ export function useLiveLocation({
   const [watching, setWatching] = useState(false);
   const watchIdRef = useRef<number | null>(null);
   const onUpdateRef = useRef(onUpdate);
+  const lastEmitRef = useRef(0);
   onUpdateRef.current = onUpdate;
 
   const stop = useCallback(() => {
@@ -35,6 +37,7 @@ export function useLiveLocation({
     stop();
     setError(null);
     setWatching(true);
+    lastEmitRef.current = 0;
 
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
@@ -45,7 +48,12 @@ export function useLiveLocation({
           timestamp: pos.timestamp,
         };
         setPosition(next);
-        onUpdateRef.current?.(next);
+
+        const now = Date.now();
+        if (now - lastEmitRef.current >= intervalMs) {
+          lastEmitRef.current = now;
+          onUpdateRef.current?.(next);
+        }
       },
       (err) => {
         setError(err.message || "Could not access your location.");
@@ -53,7 +61,7 @@ export function useLiveLocation({
       },
       {
         enableHighAccuracy: true,
-        maximumAge: intervalMs,
+        maximumAge: Math.min(intervalMs, 5000),
         timeout: 12000,
       },
     );

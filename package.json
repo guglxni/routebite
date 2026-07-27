@@ -2,7 +2,10 @@
   "name": "routebite",
   "private": true,
   "license": "UNLICENSED",
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "concurrently \"bun run --cwd apps/api dev\" \"bun run --cwd apps/mock-swiggy dev\" \"bun run --cwd apps/web dev\"",
     "dev:api": "bun run --cwd apps/api dev",
@@ -10,9 +13,10 @@
     "dev:mock": "bun run --cwd apps/mock-swiggy dev",
     "build": "bun run --cwd apps/web build",
     "lint": "eslint .",
-    "db:generate": "bun run --cwd apps/web db:generate",
-    "db:migrate": "bun run --cwd apps/web db:migrate",
-    "db:push": "bun run --cwd apps/web db:push",
+    "db:generate": "bun run --cwd packages/db db:generate",
+    "db:migrate": "bun run --cwd packages/db db:migrate",
+    "db:push": "bun run --cwd packages/db db:push",
+    "db:studio": "bun run --cwd packages/db db:studio",
     "typecheck": "bunx tsc --noEmit --project apps/api/tsconfig.json && bunx tsc --noEmit --project apps/web/tsconfig.json && bunx tsc --noEmit --project apps/mock-swiggy/tsconfig.json && bunx tsc --noEmit --project packages/shared/tsconfig.json && bunx tsc --noEmit --project packages/db/tsconfig.json && echo 'All typechecks pass'",
     "test:api": "bun run --cwd apps/api test",
     "test:api:integration": "bun run --cwd apps/api test:integration",
@@ -21,7 +25,10 @@
     "test:web": "bun run --cwd apps/web test",
     "test:web:integration": "bun run --cwd apps/web test:integration",
     "seed:dev-user": "bun run --cwd apps/api seed:dev-user",
-    "gcp:enable-maps": "GCP_PROJECT=gmp-demo-project-713039209 ./scripts/enable-gcp-maps-apis.sh"
+    "gcp:enable-maps": "GCP_PROJECT=gmp-demo-project-713039209 ./scripts/enable-gcp-maps-apis.sh",
+    "check:maps": "./scripts/check-maps-compliance.sh",
+    "test:unit": "bun test apps/api/tests/unit",
+    "ci:local": "bun run test:unit && bunx tsc --noEmit -p apps/web && bun run check:maps && gitleaks detect --no-banner"
   },
   "devDependencies": {
     "concurrently": "^9.0.0",

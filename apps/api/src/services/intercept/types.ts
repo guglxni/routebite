@@ -1,4 +1,9 @@
-import type { LatLng, TransportMode, InterceptType } from '@routebite/shared/types';
+import type {
+  LatLng,
+  TransportMode,
+  InterceptType,
+  InterceptReachability,
+} from '@routebite/shared/types';
 
 export interface CandidatePoint {
   lat: number;
@@ -7,6 +12,8 @@ export interface CandidatePoint {
   dwellTime: number; // seconds
   distanceFromStart: number; // meters
   restaurantCount?: number;
+  reachableRestaurantCount?: number;
+  reachability?: InterceptReachability;
   safetyRating?: number;
   name?: string;
   stopName?: string;
@@ -26,6 +33,8 @@ export interface ScoredInterceptPoint extends CandidatePoint {
   restaurantNames?: string[];
   weatherRisk?: boolean;
   weatherAlertTitle?: string;
+  reachableRestaurantCount?: number;
+  reachability?: InterceptReachability;
 }
 
 export interface RouteAnalysisInput {

@@ -34,5 +34,54 @@ Full OWASP Top 10 audit: [`apps/api/SECURITY_AUDIT.md`](apps/api/SECURITY_AUDIT.
 ## Secrets handling
 
 - Copy `apps/api/.env.example` → `apps/api/.env`
-- Never commit `.env`, database files, or session archives
+- Never commit `.env`, database files, session archives, PEM keys, or deploy link state (`.openship/`, `openship.json`)
+- Live demo: [https://routebite-five.vercel.app](https://routebite-five.vercel.app) — treat portal passwords as public demo credentials only
 - Rotate `ENCRYPTION_KEY` only with a migration plan (re-encrypts stored tokens)
+- Secret scan: `gitleaks detect` (CI + `bun run ci:local`); config in `.gitleaks.toml`
+
+## Google Maps Platform agent-skills / AI-DLC
+
+Governance sources installed in-repo:
+
+- `.agents/skills/google-maps-platform` — [googlemaps/agent-skills](https://github.com/googlemaps/agent-skills)
+- `.agents/skills/gcloud` — [google/skills](https://github.com/google/skills)
+- `.cursor/rules/google-maps-aidlc.mdc` — Cursor agent steering
+
+**Compliance gate:** `./scripts/check-maps-compliance.sh` (also runs in `.github/workflows/ci.yml`).
+
+Hardening notes from official skills:
+
+- No legacy Maps JS (`Marker` / `Autocomplete` / `DirectionsService`)
+- Browser never calls Maps REST (CORS) — API proxy in `apps/api`
+- Places Aggregate + Cloud Route Optimization use **ADC/OAuth**, not API keys
+- Client Maps JS: `language=en`, `region=IN`, Places UI Kit `PlaceAutocompleteElement`
+- Do not use Maps content to train ML models; geospatial cache TTLs ≪ 30 days
+- Live GPS requires explicit user consent (revocable toggle)
+
+## GCP FinOps / DevSecOps (Maps Platform)
+
+Baseline for the Maps GCP project (see `scripts/harden-gcp-finops-secops.sh`):
+
+| Control | Practice |
+|---------|----------|
+| **Budgets** | Monthly INR budget with 50/80/90/100% current + 100% forecasted alerts |
+| **Quotas** | Consumer overrides for daily + per-minute Maps/Isochrones/Places/Routes |
+| **Labels** | `app`, `env`, `cost-center`, `owner`, `finops` for cost allocation |
+| **Audit logs** | `allServices` ADMIN_READ / DATA_READ / DATA_WRITE |
+| **API keys** | API-target restricted; prefer split server (IP) vs client (HTTP referrer) keys |
+| **Contacts** | Essential contacts for billing / security / suspension |
+| **CI** | `.github/workflows/security.yml` (gitleaks) + Dependabot |
+
+```bash
+export PATH="/opt/homebrew/share/google-cloud-sdk/bin:$PATH"
+GCP_PROJECT=gmp-demo-project-713039209 \
+GCP_BILLING_ACCOUNT=01820F-8D7816-3967E8 \
+./scripts/harden-gcp-finops-secops.sh
+
+# Optional application lock (pick one style per key — don't mix on one key):
+KEY_ALLOWED_IPS=YOUR.PUBLIC.IP ./scripts/harden-gcp-finops-secops.sh
+# or
+KEY_ALLOWED_REFERRERS='http://localhost:3000/*,https://your.domain/*' ./scripts/harden-gcp-finops-secops.sh
+```
+
+Never paste live API keys into chat, tickets, or commits. Rotate if exposed.

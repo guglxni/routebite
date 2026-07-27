@@ -17,6 +17,11 @@ export const addressValidationCache = new TtlLruCache<string, unknown>(200, 24 *
 export const placesCountCache = new TtlLruCache<string, number>(300, 60 * 60_000);
 export const weatherHourlyCache = new TtlLruCache<string, unknown>(200, 60 * 60_000);
 export const weatherAlertsCache = new TtlLruCache<string, unknown>(100, 15 * 60_000);
+export const weatherCurrentCache = new TtlLruCache<string, unknown>(200, 20 * 60_000);
+export const airQualityCache = new TtlLruCache<string, unknown>(200, 30 * 60_000);
+export const pollenCache = new TtlLruCache<string, unknown>(100, 60 * 60_000);
+/** Isochrone GeoJSON polygons — keyed by grid + mode + duration */
+export const isochroneCache = new TtlLruCache<string, unknown>(150, 30 * 60_000);
 
 export { makeRouteKey };
 
@@ -24,12 +29,42 @@ export function makePlacesCountKey(lat: number, lng: number, radiusM: number): s
   return `pc:${toGridKey(lat, lng, 4)}|${radiusM}`;
 }
 
-export function makeWeatherKey(lat: number, lng: number, kind: 'hourly' | 'alerts'): string {
+export function makeIsochroneKey(
+  point: LatLng,
+  durationS: number,
+  mode: string,
+  direction: string,
+  routingPreference: string,
+  smoothing: boolean,
+  fidelity: string
+): string {
+  return `iso:${toGridKey(point.lat, point.lng, 3)}|${durationS}|${mode}|${direction}|${routingPreference}|s${smoothing ? 1 : 0}|${fidelity}`;
+}
+
+export function makeWeatherKey(
+  lat: number,
+  lng: number,
+  kind: 'hourly' | 'alerts' | 'current'
+): string {
   return `wx:${kind}:${toGridKey(lat, lng, 3)}`;
 }
 
-export function makeMatrixKey(origins: LatLng[], destinations: LatLng[], mode: string): string {
+export function makeAirQualityKey(lat: number, lng: number): string {
+  return `aq:${toGridKey(lat, lng, 3)}`;
+}
+
+export function makePollenKey(lat: number, lng: number): string {
+  return `pollen:${toGridKey(lat, lng, 3)}`;
+}
+
+export function makeMatrixKey(
+  origins: LatLng[],
+  destinations: LatLng[],
+  mode: string,
+  departureBucket?: number
+): string {
   const originHash = origins.map(o => `${o.lat.toFixed(5)},${o.lng.toFixed(5)}`).join('|');
   const destHash = destinations.map(d => `${d.lat.toFixed(5)},${d.lng.toFixed(5)}`).join('|');
-  return `${originHash}→${destHash}|${mode}`;
+  const dep = departureBucket != null ? `|dep${departureBucket}` : '';
+  return `${originHash}→${destHash}|${mode}${dep}`;
 }

@@ -5,6 +5,7 @@ import type { LatLng } from '@routebite/shared/types';
 import { INTERCEPT_SCORING } from '@routebite/shared/constants';
 import { mapsClient } from '../maps/client';
 import { scoreInterceptPoint, filterAndRankPoints } from '../intercept/scoring';
+import { attachIsochroneReachability } from '../intercept/algorithm';
 import type { ScoredInterceptPoint } from '../intercept/types';
 import { getTrainRun } from './train-run';
 import {
@@ -123,12 +124,14 @@ export async function buildTrainJourneyPlan(opts: {
     });
   }
 
-  const interceptPoints = filterAndRankPoints(
+  const ranked = filterAndRankPoints(
     candidates,
     INTERCEPT_SCORING.MIN_SCORE,
     5,
     20_000
   );
+
+  const interceptPoints = await attachIsochroneReachability(ranked);
 
   return {
     routePoints,

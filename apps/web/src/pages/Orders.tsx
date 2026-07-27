@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import AnimatedContent from "~/components/AnimatedContent";
 import SpotlightCard from "~/components/SpotlightCard";
+import { PageHeader } from "~/components/dashboard/PageHeader";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
@@ -112,31 +113,29 @@ export default function Orders() {
 
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6 pb-24">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <h1 className="text-3xl font-extrabold tracking-tight">Your orders</h1>
-          <p className="mt-1 text-sm text-text-secondary">
-            Track and manage deliveries synced to your journey intercepts.
-          </p>
-        </div>
-
-        <Tabs value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
-          <TabsList className="h-auto flex-wrap gap-1 bg-surface-raised/80 p-1">
-            {(["all", "active", "past"] as const).map((key) => (
-              <TabsTrigger
-                key={key}
-                value={key}
-                className="capitalize data-[state=active]:bg-amber data-[state=active]:text-void"
-              >
-                {key}
-                <span className="ml-1.5 rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] tabular-nums">
-                  {counts[key]}
-                </span>
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
-      </div>
+      <PageHeader
+        eyebrow="Orders"
+        title="Your deliveries"
+        description="Track and manage orders timed to your journey intercepts."
+        actions={
+          <Tabs value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
+            <TabsList className="h-auto flex-wrap gap-1 bg-surface-raised/80 p-1">
+              {(["all", "active", "past"] as const).map((key) => (
+                <TabsTrigger
+                  key={key}
+                  value={key}
+                  className="capitalize data-[state=active]:bg-amber data-[state=active]:text-void"
+                >
+                  {key}
+                  <span className="ml-1.5 rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] tabular-nums">
+                    {counts[key]}
+                  </span>
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        }
+      />
 
       {loading && all.length === 0 ? (
         <div className="flex min-h-[40vh] items-center justify-center">

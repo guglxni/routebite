@@ -1,9 +1,14 @@
-import type { LatLng, TransportMode } from '@routebite/shared/types';
+import type { TransportMode } from '@routebite/shared/types';
 import { MAPS_FEATURES } from '@routebite/shared/constants';
 import type { CandidatePoint } from './types';
 import type { JourneyRoute } from '../maps/types';
 import { mapsClient } from '../maps/client';
 import { weatherClient, applyWeatherToSafetyRating } from '../weather/client';
+import {
+  environmentClient,
+  buildEnvironmentContext,
+  applyEnvironmentToSafetyRating,
+} from '../environment/client';
 import { adjustDwellForTraffic, detectTollCandidatesFromRoute } from './traffic';
 import { haversineMeters } from '../../lib/geo';
 
@@ -16,6 +21,8 @@ export interface EnrichmentOptions {
 export interface EnrichedCandidate extends CandidatePoint {
   weatherRisk?: boolean;
   weatherAlertTitle?: string;
+  outdoorRisk?: boolean;
+  outdoorRiskTitles?: string[];
 }
 
 /**
@@ -65,6 +72,35 @@ export async function enrichCandidates(
             safetyRating: applyWeatherToSafetyRating(c.safetyRating ?? 3, wx),
             weatherRisk: Boolean(wx.alerts?.hasActiveAlert),
             weatherAlertTitle: wx.alerts?.alertTitle,
+          };
+        } catch {
+          return c;
+        }
+      })
+    );
+  }
+
+  if (MAPS_FEATURES.AIR_QUALITY_SAFETY || MAPS_FEATURES.POLLEN_SAFETY) {
+    enriched = await Promise.all(
+      enriched.map(async (c) => {
+        try {
+          const [aq, pollen] = await Promise.all([
+            MAPS_FEATURES.AIR_QUALITY_SAFETY
+              ? environmentClient.getAirQuality({ lat: c.lat, lng: c.lng }).catch(() => undefined)
+              : Promise.resolve(undefined),
+            MAPS_FEATURES.POLLEN_SAFETY
+              ? environmentClient.getPollen({ lat: c.lat, lng: c.lng }).catch(() => undefined)
+              : Promise.resolve(undefined),
+          ]);
+          const env = buildEnvironmentContext(aq, pollen);
+          if (!env.outdoorRisk) return c;
+          return {
+            ...c,
+            safetyRating: applyEnvironmentToSafetyRating(c.safetyRating ?? 3, env),
+            outdoorRisk: true,
+            outdoorRiskTitles: env.riskTitles,
+            weatherRisk: c.weatherRisk || env.outdoorRisk,
+            weatherAlertTitle: c.weatherAlertTitle ?? env.riskTitles[0],
           };
         } catch {
           return c;

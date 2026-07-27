@@ -329,4 +329,24 @@ body {
   .maplibregl-popup-tip {
     @apply hidden!;
   }
+
+  /* Places UI Kit — dark theme alignment with RouteBite surfaces */
+  .rb-places-ui-kit,
+  .rb-place-autocomplete {
+    width: 100%;
+    color-scheme: dark;
+  }
+  gmp-place-autocomplete,
+  .rb-place-autocomplete {
+    background: transparent !important;
+    color: #f4f4f5 !important;
+    font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif) !important;
+  }
+  gmp-place-autocomplete {
+    --gmp-mat-color-surface: #12121a;
+    --gmp-mat-color-on-surface: #f4f4f5;
+    --gmp-mat-color-on-surface-variant: #a1a1aa;
+    --gmp-mat-color-outline-decorative: rgba(255, 255, 255, 0.1);
+    --gmp-mat-color-primary: #f59e0b;
+  }
 }

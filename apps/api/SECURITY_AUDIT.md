@@ -1,7 +1,7 @@
 # RouteBite Security Audit — OWASP Top 10 (2025)
 
 **Scope:** `apps/api`, `apps/web`, `apps/mock-swiggy`, `packages/db`  
-**Last reviewed:** 2026-06-03  
+**Last reviewed:** 2026-07-27  
 **Status:** Pre-production MVP — suitable for Builders Club demo; address P2 items before scale.
 
 ---
@@ -102,7 +102,14 @@ Set `REDIS_URL` in production for horizontal scaling (Upstash, ElastiCache, etc.
 | Token expiry enforcement | ✅ |
 | Session token hashing | ✅ |
 | Swiggy token encryption at rest | ✅ |
+| Role gates (`requireRole`) for rider/admin | ✅ |
 | MFA | N/A for MVP |
+
+### Portal demo accounts (2026-07-27)
+
+Hardcoded portal logins (`user` / `rider` / `admin`) are **demo-only**. They mint sessions with mock Swiggy tokens and must not be enabled against live Swiggy MCP without additional controls. Production should disable portal password login or bind it to an allowlisted `NODE_ENV`/feature flag.
+
+Secrets hygiene: `.gitignore` excludes `.env*`, `openship.json`, session archives, PEM keys, and local agent caches. CI runs gitleaks with `.gitleaks.toml` (NTES public protocol constants allowlisted).
 
 ---
 

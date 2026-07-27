@@ -1,6 +1,29 @@
 import { create } from "zustand";
 import type { GPSPosition, TransportMode, VehicleDetails } from "@routebite/shared/types";
-import { getIntercepts, patchJourneyTelemetry, postJourney } from "../lib/api";
+import {
+  getIntercepts,
+  patchJourneyTelemetry,
+  postJourney,
+  type OutdoorConditionsDto,
+} from "../lib/api";
+
+export type IsochroneGeoJson = {
+  type: "Polygon" | "MultiPolygon";
+  coordinates: number[][][] | number[][][][];
+};
+
+export interface InterceptReachability {
+  riderBudgetSeconds: number;
+  walkBudgetSeconds: number;
+  reachableRestaurantCount: number;
+  circularRestaurantCount?: number;
+  riderAreaM2?: number;
+  isochroneOk: boolean;
+  riderIsochrone?: IsochroneGeoJson;
+  walkIsochrone?: IsochroneGeoJson;
+  travelMode?: string;
+  travelDirection?: string;
+}
 
 export interface Intercept {
   id: string;
@@ -10,10 +33,12 @@ export interface Intercept {
   score: number;
   dwellTime: number;
   restaurantCount: number;
+  reachableRestaurantCount?: number;
   safetyRating: number;
   name?: string;
   etaSeconds?: number;
   stationCode?: string;
+  reachability?: InterceptReachability;
 }
 
 export interface Journey {
@@ -30,6 +55,7 @@ export interface Journey {
   durationSeconds?: number;
   hasTolls?: boolean;
   weatherWarnings?: Array<{ lat: number; lng: number; title: string }>;
+  outdoorConditions?: OutdoorConditionsDto | null;
   routePolyline?: string | null;
   routePoints?: Array<{ lat: number; lng: number }>;
   interceptCount?: number;

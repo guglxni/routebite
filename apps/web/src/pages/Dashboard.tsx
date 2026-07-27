@@ -12,13 +12,15 @@ import {
 } from "lucide-react";
 import { compareInterceptRank, selectTopK } from "@routebite/shared/algorithms";
 import CountUp from "~/components/CountUp";
-import GradientText from "~/components/GradientText";
 import SpotlightCard from "~/components/SpotlightCard";
+import { PageHeader } from "~/components/dashboard/PageHeader";
 import { QuickRouteForm } from "~/components/journey/QuickRouteForm";
 import { useAuth } from "~/stores/auth";
 import { useOrders } from "~/stores/orders";
 import { useJourney } from "~/stores/journey";
 import { JourneyMap } from "~/components/map/JourneyMap";
+import { WeatherAlertsBanner } from "~/components/journey/WeatherAlertsBanner";
+import { RouteOptimizePanel } from "~/components/journey/RouteOptimizePanel";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -30,13 +32,31 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const { user, hydrated } = useAuth();
   const { all, fetchOrders } = useOrders();
-  const { current, intercepts, loading, setSelectedIntercept, customerPosition } = useJourney();
+  const {
+    current,
+    intercepts,
+    loading,
+    setSelectedIntercept,
+    customerPosition,
+    selectedInterceptId,
+  } = useJourney();
 
   const [tab, setTab] = useState<"active" | "past">("active");
+  const [draftOrigin, setDraftOrigin] = useState<{ lat: number; lng: number } | null>(null);
+  const [draftDestination, setDraftDestination] = useState<{ lat: number; lng: number } | null>(
+    null,
+  );
 
   useEffect(() => {
     if (hydrated) fetchOrders();
   }, [hydrated, fetchOrders]);
+
+  const topInterceptId = useMemo(() => {
+    if (!intercepts.length) return null;
+    return selectTopK(intercepts, 1, compareInterceptRank)[0]?.id ?? null;
+  }, [intercepts]);
+
+  const mapSelectedId = selectedInterceptId ?? topInterceptId;
 
   const activeOrders = all.filter((o) =>
     ["pending", "confirmed", "preparing", "out_for_delivery"].includes(o.status),
@@ -60,23 +80,15 @@ export default function Dashboard() {
 
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6 pb-16">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-extrabold tracking-tight">
-          {user?.name ? (
-            <>
-              Hey,{" "}
-              <GradientText colors={["#fbbf24", "#f59e0b", "#fcd34d"]} className="text-3xl">
-                {user.name.split(" ")[0]}
-              </GradientText>
-            </>
-          ) : (
-            "Route command center"
-          )}
-        </h1>
-        <p className="text-text-secondary text-sm max-w-2xl">
-          Plan journeys with live Google Maps routing, discover intercept stops, order from Swiggy, and track alignment — all in one dashboard.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Overview"
+        title="Where to next?"
+        description={
+          user?.name
+            ? `${user.name.split(" ")[0]}, plan a trip, pick intercepts along the route, and order without leaving the journey.`
+            : "Plan journeys with live Google Maps routing, discover intercept stops, order from Swiggy, and track alignment — all in one place."
+        }
+      />
 
       <div className="grid gap-6 xl:grid-cols-5">
         <div className="xl:col-span-3 flex flex-col gap-4">
@@ -86,10 +98,12 @@ export default function Dashboard() {
             <JourneyMap
               origin={origin}
               destination={destination}
+              draftOrigin={draftOrigin}
+              draftDestination={draftDestination}
               routePoints={current?.routePoints}
               intercepts={intercepts}
               customerPosition={customerPosition}
-              selectedInterceptId={null}
+              selectedInterceptId={mapSelectedId}
               onSelectIntercept={(id) => {
                 setSelectedIntercept(id);
                 navigate(`/intercepts`);
@@ -99,23 +113,40 @@ export default function Dashboard() {
           )}
 
           {current && (
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="outline" className="border-amber/30 text-amber">
-                {current.originAddress}
-              </Badge>
-              <ArrowRight className="size-4 text-muted-foreground self-center" />
-              <Badge variant="outline" className="border-emerald/30 text-emerald">
-                {current.destinationAddress}
-              </Badge>
-              {current.hasTolls && (
-                <Badge variant="secondary">Toll route detected</Badge>
-              )}
-              {(current.weatherWarnings?.length ?? 0) > 0 && (
-                <Badge variant="destructive" className="gap-1">
-                  <CloudRain className="size-3" />
-                  {current.weatherWarnings!.length} weather alerts
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="outline" className="border-amber/30 text-amber">
+                  {current.originAddress}
                 </Badge>
-              )}
+                <ArrowRight className="size-4 text-muted-foreground self-center" />
+                <Badge variant="outline" className="border-emerald/30 text-emerald">
+                  {current.destinationAddress}
+                </Badge>
+                {current.hasTolls && (
+                  <Badge variant="secondary">Toll route detected</Badge>
+                )}
+                {current.outdoorConditions?.severity === "alert" && (
+                  <Badge variant="destructive" className="gap-1">
+                    <CloudRain className="size-3" />
+                    Outdoor alert
+                  </Badge>
+                )}
+                {current.outdoorConditions?.severity === "watch" && (
+                  <Badge variant="secondary" className="gap-1 border-amber/30 text-amber">
+                    <CloudRain className="size-3" />
+                    Outdoor watch
+                  </Badge>
+                )}
+                {current.outdoorConditions?.severity === "good" && (
+                  <Badge variant="outline" className="gap-1 border-emerald/30 text-emerald">
+                    Conditions clear
+                  </Badge>
+                )}
+              </div>
+              <WeatherAlertsBanner
+                warnings={current.weatherWarnings}
+                outdoorConditions={current.outdoorConditions}
+              />
             </div>
           )}
         </div>
@@ -132,7 +163,13 @@ export default function Dashboard() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <QuickRouteForm datalistId="rb-dashboard-places" />
+              <QuickRouteForm
+                datalistId="rb-dashboard-places"
+                onDraftPlacesChange={({ origin: o, destination: d }) => {
+                  setDraftOrigin(o ? { lat: o.lat, lng: o.lng } : null);
+                  setDraftDestination(d ? { lat: d.lat, lng: d.lng } : null);
+                }}
+              />
             </CardContent>
           </Card>
 
@@ -198,6 +235,10 @@ export default function Dashboard() {
           </div>
 
           {current && intercepts.length > 0 && (
+            <RouteOptimizePanel journey={current} intercepts={intercepts} />
+          )}
+
+          {current && intercepts.length > 0 && (
             <Card className="glass border-border-subtle">
               <CardHeader className="pb-2">
                 <CardTitle className="text-base">Top intercept</CardTitle>
@@ -214,6 +255,13 @@ export default function Dashboard() {
                           {top.score.toFixed(1)}
                         </Badge>
                       </div>
+                      <p className="text-xs text-text-muted">
+                        <span className="text-violet-300 font-medium">
+                          {top.reachableRestaurantCount ?? top.restaurantCount} rider-reachable
+                        </span>
+                        {" · "}
+                        {top.restaurantCount} nearby · safety {top.safetyRating}/10
+                      </p>
                       <Progress value={top.safetyRating * 10} className="h-2" />
                       <div className="flex gap-2">
                         <Button

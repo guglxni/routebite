@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { requireAuth } from "./auth.js";
 import { restaurants, menuItems, carts, ensureCart, ensureAddresses, ensureOrders, generateOrderId } from "./data.js";
-import { parseToolCall } from "./mcp.js";
+import { parseToolCall, toolSuccess, toolFailure } from "./mcp.js";
 import crypto from "crypto";
 
 export const foodRouter = new Hono();
@@ -19,9 +19,14 @@ foodRouter.use(async (c, next) => {
 });
 
 foodRouter.post("/*", async (c) => {
-  const { tool, params: body } = await parseToolCall(c, "food");
+  const { tool, params: body, rpcId } = await parseToolCall(c, "food");
   const bodyAny = body as Record<string, any>;
   const sid = sessionId(c);
+  const ok = (data: unknown, message?: string) => c.json(toolSuccess(data, message, rpcId));
+  const fail = (message: string, code?: string, status: number = 400) => {
+    const f = toolFailure(message, code, status, rpcId);
+    return c.json(f.body, f.status as 400);
+  };
 
   switch (tool) {
     case "get_addresses": {
@@ -29,75 +34,93 @@ foodRouter.post("/*", async (c) => {
       return c.json({ success: true, data: addrs });
     }
 
-    case "create_address": {
-      const { label, address, landmark } = bodyAny;
-      const addrs = ensureAddresses(sid);
-      const id = `addr_${addrs.length + 1}`;
-      const newAddr = { id, label: label || "Other", address, landmark };
-      addrs.push(newAddr);
-      return c.json({ success: true, data: newAddr });
-    }
-
     case "search_restaurants": {
-      const { addressId, query, lat, lng } = bodyAny;
+      if (!bodyAny.addressId) {
+        return fail("Missing required parameter: addressId", "VALIDATION_ERROR");
+      }
+      const query = bodyAny.query ?? "food";
+      const { lat, lng } = bodyAny;
       let results = [...restaurants];
       if (query) {
-        const q = query.toLowerCase();
+        const q = String(query).toLowerCase();
         results = results.filter(r => r.name.toLowerCase().includes(q) || r.cuisine.some(c => c.toLowerCase().includes(q)));
       }
+      const open = results.filter(r => r.availabilityStatus === "OPEN").map(r => {
+        let distanceKm = r.distanceKm;
+        if (typeof lat === "number" && typeof lng === "number" && typeof r.lat === "number" && typeof r.lng === "number") {
+          const R = 6371;
+          const dLat = ((r.lat - lat) * Math.PI) / 180;
+          const dLng = ((r.lng - lng) * Math.PI) / 180;
+          const a =
+            Math.sin(dLat / 2) ** 2 +
+            Math.cos((lat * Math.PI) / 180) * Math.cos((r.lat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+          distanceKm = Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 100) / 100;
+        }
+        return { ...r, distanceKm };
+      });
       return c.json({
         success: true,
         data: {
-          restaurants: results.filter(r => r.availabilityStatus === "OPEN"),
-          total: results.length,
+          restaurants: open,
+          total: open.length,
         },
         session_id: `sess_${crypto.randomBytes(8).toString("hex")}`,
       });
     }
 
     case "get_restaurant_menu": {
+      if (!bodyAny.addressId || !bodyAny.restaurantId) {
+        return fail("Missing required parameter: addressId and restaurantId", "VALIDATION_ERROR");
+      }
       const { restaurantId } = bodyAny;
       const items = menuItems[restaurantId] || [];
-      return c.json({
-        success: true,
-        data: { restaurantId, items, categories: [...new Set(items.map(i => i.category))] },
-      });
+      return ok({ restaurantId, items, categories: [...new Set(items.map((i: any) => i.category))] });
     }
 
     case "search_menu": {
-      const { restaurantId, query } = bodyAny;
-      let items: any[] = [];
-      if (restaurantId) {
-        items = menuItems[restaurantId] || [];
-      } else {
-        items = Object.values(menuItems).flat();
+      if (!bodyAny.addressId || !bodyAny.query) {
+        return fail("Missing required parameter: addressId and query", "VALIDATION_ERROR");
       }
-      if (query) {
-        const q = query.toLowerCase();
-        items = items.filter(i => i.name.toLowerCase().includes(q) || i.description?.toLowerCase().includes(q));
-      }
-      return c.json({ success: true, data: { items, total: items.length } });
+      const restaurantId = bodyAny.restaurantIdOfAddedItem ?? bodyAny.restaurantId;
+      let items: any[] = restaurantId ? menuItems[restaurantId] || [] : Object.values(menuItems).flat();
+      const q = String(bodyAny.query).toLowerCase();
+      items = items.filter((i) => i.name.toLowerCase().includes(q) || i.description?.toLowerCase().includes(q));
+      return ok({ items, total: items.length });
     }
 
     case "update_food_cart": {
-      const { restaurantId, items: newItems } = bodyAny;
+      if (!bodyAny.restaurantId || !bodyAny.addressId) {
+        return fail("Missing required parameter: restaurantId and addressId", "VALIDATION_ERROR");
+      }
+      const restaurantId = bodyAny.restaurantId;
+      const newItems = bodyAny.cartItems ?? bodyAny.items ?? [];
       const cart = ensureCart(sid);
       if (cart.restaurantId && cart.restaurantId !== restaurantId && newItems?.length) {
         cart.items = [];
       }
       cart.restaurantId = restaurantId;
       newItems.forEach((it: any) => {
-        const existing = cart.items.find((ci: any) => ci.itemId === it.itemId && ci.variantId === it.variantId);
+        const itemId = it.itemId ?? it.menuItemId;
+        const existing = cart.items.find((ci: any) => ci.itemId === itemId && ci.variantId === it.variantId);
         if (existing) {
           existing.quantity = it.quantity || 1;
         } else {
-          cart.items.push({ itemId: it.itemId, name: it.name, variantId: it.variantId, addOns: it.addOns || [], quantity: it.quantity || 1 });
+          cart.items.push({
+            itemId,
+            name: it.name,
+            variantId: it.variantId,
+            addOns: it.addOns || it.addons || [],
+            quantity: it.quantity || 1,
+          });
         }
       });
-      return c.json({ success: true, data: { restaurantId, items: cart.items } });
+      return ok({ restaurantId, items: cart.items, addressId: bodyAny.addressId });
     }
 
     case "get_food_cart": {
+      if (!bodyAny.addressId) {
+        return fail("Missing required parameter: addressId", "VALIDATION_ERROR");
+      }
       const cart = ensureCart(sid);
       const menuFlat = Object.values(menuItems).flat();
       const enriched = cart.items.map((ci: any) => {
@@ -118,46 +141,50 @@ foodRouter.post("/*", async (c) => {
       const deliveryFee = subtotal > 0 ? 40 : 0;
       const tax = Math.round(subtotal * 0.05);
       const total = subtotal + deliveryFee + tax;
-      return c.json({
-        success: true,
-        data: {
-          restaurantId: cart.restaurantId,
-          items: enriched,
-          subtotal,
-          deliveryFee,
-          tax,
-          total,
-          valid_addons: menuFlat.find(m => m.id === enriched[0]?.itemId)?.addOns || [],
-        },
+      return ok({
+        restaurantId: cart.restaurantId,
+        items: enriched,
+        subtotal,
+        deliveryFee,
+        tax,
+        total,
+        availablePaymentMethods: ["COD"],
+        valid_addons: menuFlat.find((m) => m.id === enriched[0]?.itemId)?.addOns || [],
       });
     }
 
     case "flush_food_cart": {
       carts.set(sid, { items: [] });
-      return c.json({ success: true, data: { cleared: true } });
+      return ok({ cleared: true });
     }
 
     case "fetch_food_coupons": {
-      return c.json({
-        success: true,
-        data: [
-          { code: "WELCOME50", description: "50% off up to ₹100", minOrder: 200, maxDiscount: 100, requiresOnlinePayment: false },
-          { code: "FREEDEL", description: "Free delivery", minOrder: 300, maxDiscount: 40, requiresOnlinePayment: false },
-          { code: "INSTANT20", description: "20% off", minOrder: 500, maxDiscount: 150, requiresOnlinePayment: true },
-        ],
-      });
+      if (!bodyAny.restaurantId || !bodyAny.addressId) {
+        return fail("Missing required parameter: restaurantId and addressId", "VALIDATION_ERROR");
+      }
+      return ok([
+        { code: "WELCOME50", description: "50% off up to ₹100", minOrder: 200, maxDiscount: 100, requiresOnlinePayment: false },
+        { code: "FREEDEL", description: "Free delivery", minOrder: 300, maxDiscount: 40, requiresOnlinePayment: false },
+        { code: "INSTANT20", description: "20% off", minOrder: 500, maxDiscount: 150, requiresOnlinePayment: true },
+      ]);
     }
 
     case "apply_food_coupon": {
-      const { code } = bodyAny;
-      if (!["WELCOME50", "FREEDEL"].includes(code)) {
-        return c.json({ success: false, error: { message: "Coupon invalid or unavailable", code: "COUPON_INVALID" } }, 400);
+      const couponCode = bodyAny.couponCode ?? bodyAny.code;
+      if (!bodyAny.addressId || !couponCode) {
+        return fail("Missing required parameter: couponCode and addressId", "VALIDATION_ERROR");
       }
-      return c.json({ success: true, data: { code, applied: true } });
+      if (!["WELCOME50", "FREEDEL"].includes(couponCode)) {
+        return fail("Coupon invalid or unavailable", "COUPON_INVALID");
+      }
+      return ok({ code: couponCode, applied: true, coupon_discount: couponCode === "WELCOME50" ? 50 : 40 });
     }
 
     case "place_food_order": {
-      const { paymentMethod = "COD" } = bodyAny;
+      if (!bodyAny.addressId) {
+        return fail("Missing required parameter: addressId", "VALIDATION_ERROR");
+      }
+      const paymentMethod = bodyAny.paymentMethod ?? "COD";
       const cart = ensureCart(sid);
       const menuFlat = Object.values(menuItems).flat();
       const enriched = cart.items.map((ci: any) => {
@@ -168,18 +195,17 @@ foodRouter.post("/*", async (c) => {
       const subtotal = enriched.reduce((s: number, i: any) => s + i.price * i.quantity, 0);
       const total = subtotal + 40 + Math.round(subtotal * 0.05);
 
-      if (total > 1000) {
-        return c.json({ success: false, error: { message: "Cart exceeds ₹1000 cap", code: "CART_LIMIT_EXCEEDED" } }, 400);
+      if (total >= 1000) {
+        return fail("Cart exceeds ₹1000 cap", "CART_LIMIT_EXCEEDED");
       }
-
       if (total === 0) {
-        return c.json({ success: false, error: { message: "Cart is empty", code: "EMPTY_CART" } }, 400);
+        return fail("Cart is empty", "EMPTY_CART");
       }
 
       const orderId = generateOrderId();
       const addrs = ensureAddresses(sid);
       const lastAddr = addrs[addrs.length - 1];
-      const deliveryInstructions = lastAddr?.landmark as string | undefined;
+      const deliveryInstructions = (lastAddr as any)?.landmark as string | undefined;
 
       const order = {
         orderId,
@@ -191,18 +217,18 @@ foodRouter.post("/*", async (c) => {
         placedAt: new Date().toISOString(),
         deliveryEta: "30-40 min",
         deliveryInstructions,
+        addressId: bodyAny.addressId,
+        server: "food",
       };
 
       const ords = ensureOrders(sid);
       ords.unshift(order);
-
-      // Flush cart
       carts.set(sid, { items: [] });
 
-      return c.json({
-        success: true,
-        data: { orderId, status: "PLACED", total, estimatedDelivery: "30-40 min" },
-      });
+      return ok(
+        { orderId, status: "PLACED", total, estimatedDelivery: "30-40 min" },
+        "Swiggy order placed successfully"
+      );
     }
 
     case "get_food_orders": {

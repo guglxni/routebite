@@ -29,6 +29,13 @@ export const TimingTypeSchema = z.enum(['now', 'auto']);
 
 export const JourneyStatusSchema = z.enum(['active', 'completed', 'cancelled']);
 
+export const PortalRoleSchema = z.enum(['user', 'rider', 'admin']);
+
+export const PortalLoginSchema = z.object({
+  username: z.string().min(1).max(64),
+  password: z.string().min(1).max(128),
+});
+
 // ─── Geo Schemas ─────────────────────────────────────────────────────────────
 
 export const LatLngSchema = z.object({

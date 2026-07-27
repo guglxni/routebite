@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { createMiddleware } from 'hono/factory';
+import type { PortalRole } from '@routebite/shared/types';
 import { RouteBiteError } from './error-handler';
 import { getDb } from '@routebite/db/client';
 import { users } from '@routebite/db/schema';
@@ -60,6 +61,11 @@ export function hashSessionToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
+function normalizeRole(role: string | null | undefined): PortalRole {
+  if (role === 'rider' || role === 'admin' || role === 'user') return role;
+  return 'user';
+}
+
 export const authMiddleware = createMiddleware(async (c, next) => {
   const authHeader = c.req.header('Authorization');
   if (!authHeader?.startsWith('Bearer ')) {
@@ -106,7 +112,14 @@ export const authMiddleware = createMiddleware(async (c, next) => {
       throw new RouteBiteError('UNAUTHORIZED', 'Token expired. Please re-authenticate.', 401);
     }
 
-    c.set('user', { id: user.id, swiggyIdHash: user.swiggyIdHash });
+    c.set('user', {
+      id: user.id,
+      swiggyIdHash: user.swiggyIdHash,
+      role: normalizeRole(user.role),
+      username: user.username ?? null,
+      name: user.name ?? null,
+      email: user.email ?? null,
+    });
     c.set('accessToken', accessToken);
     await next();
   } catch (err) {
@@ -123,7 +136,14 @@ export const authMiddleware = createMiddleware(async (c, next) => {
 
 declare module 'hono' {
   interface ContextVariableMap {
-    user: { id: number; swiggyIdHash: string };
+    user: {
+      id: number;
+      swiggyIdHash: string;
+      role: PortalRole;
+      username: string | null;
+      name: string | null;
+      email: string | null;
+    };
     accessToken: string;
   }
 }

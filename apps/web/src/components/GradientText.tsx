@@ -10,6 +10,8 @@ interface GradientTextProps {
   direction?: 'horizontal' | 'vertical' | 'diagonal';
   pauseOnHover?: boolean;
   yoyo?: boolean;
+  /** Center the block (landing heroes). Default stays inline. */
+  centered?: boolean;
 }
 
 export default function GradientText({
@@ -20,7 +22,8 @@ export default function GradientText({
   showBorder = false,
   direction = 'horizontal',
   pauseOnHover = false,
-  yoyo = true
+  yoyo = true,
+  centered = false,
 }: GradientTextProps) {
   const [isPaused, setIsPaused] = useState(false);
   const progress = useMotionValue(0);
@@ -54,7 +57,6 @@ export default function GradientText({
         progress.set(100 - ((cycleTime - animationDuration) / animationDuration) * 100);
       }
     } else {
-      // Continuously increase position for seamless looping
       progress.set((elapsedRef.current / animationDuration) * 100);
     }
   });
@@ -62,7 +64,7 @@ export default function GradientText({
   useEffect(() => {
     elapsedRef.current = 0;
     progress.set(0);
-  }, [animationSpeed, yoyo]);
+  }, [animationSpeed, yoyo, progress]);
 
   const backgroundPosition = useTransform(progress, p => {
     if (direction === 'horizontal') {
@@ -70,7 +72,6 @@ export default function GradientText({
     } else if (direction === 'vertical') {
       return `50% ${p}%`;
     } else {
-      // For diagonal, move only horizontally to avoid interference patterns
       return `${p}% 50%`;
     }
   });
@@ -85,18 +86,17 @@ export default function GradientText({
 
   const gradientAngle =
     direction === 'horizontal' ? 'to right' : direction === 'vertical' ? 'to bottom' : 'to bottom right';
-  // Duplicate first color at the end for seamless looping
   const gradientColors = [...colors, colors[0]].join(', ');
 
   const gradientStyle = {
     backgroundImage: `linear-gradient(${gradientAngle}, ${gradientColors})`,
     backgroundSize: direction === 'horizontal' ? '300% 100%' : direction === 'vertical' ? '100% 300%' : '300% 300%',
-    backgroundRepeat: 'repeat'
+    backgroundRepeat: 'repeat' as const,
   };
 
   return (
     <motion.div
-      className={`relative mx-auto flex max-w-fit flex-row items-center justify-center rounded-[1.25rem] font-medium backdrop-blur transition-shadow duration-500 overflow-hidden cursor-pointer ${showBorder ? 'py-1 px-2' : ''} ${className}`}
+      className={`relative flex max-w-fit flex-row items-center justify-center rounded-[1.25rem] font-medium backdrop-blur transition-shadow duration-500 overflow-hidden cursor-pointer ${centered ? 'mx-auto' : 'inline-flex align-baseline'} ${showBorder ? 'py-1 px-2' : ''} ${className}`}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >

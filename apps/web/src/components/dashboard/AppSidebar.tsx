@@ -107,7 +107,9 @@ export function AppSidebar() {
               </Avatar>
               <div className="flex flex-col gap-0.5 leading-none">
                 <span className="font-medium">{user?.name ?? "RouteBite user"}</span>
-                <span className="text-xs text-muted-foreground">ID {user?.id ?? "—"}</span>
+                <span className="text-xs text-muted-foreground capitalize">
+                  {user?.role ?? "user"} · ID {user?.id ?? "—"}
+                </span>
               </div>
             </SidebarMenuButton>
           </SidebarMenuItem>

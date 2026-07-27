@@ -2,12 +2,12 @@ import { useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { CheckCircle2, Loader2, AlertTriangle } from "lucide-react";
 import gsap from "gsap";
-import { useAuth } from "../stores/auth";
+import { homePathForRole, useAuth } from "../stores/auth";
 
 export default function AuthCallback() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
-  const { setToken } = useAuth();
+  const { setToken, fetchUser } = useAuth();
   const containerRef = useRef<HTMLDivElement>(null);
   const state = params.get("state");
   const code = params.get("code");
@@ -22,7 +22,10 @@ export default function AuthCallback() {
         const res = await fetch(`/api/v1/auth/callback?code=${code}&state=${state}`, {
           credentials: "include",
         });
-        const data = (await res.json()) as { data?: { token: string }; error?: { message: string } };
+        const data = (await res.json()) as {
+          data?: { token: string; homePath?: string; role?: string };
+          error?: { message: string };
+        };
 
         if (!res.ok || !data.data?.token) {
           throw new Error(data.error?.message ?? "Auth failed");
@@ -30,16 +33,19 @@ export default function AuthCallback() {
 
         localStorage.setItem("rb_token", data.data.token);
         setToken(data.data.token);
+        await fetchUser();
+        const home =
+          data.data.homePath ??
+          homePathForRole(useAuth.getState().user?.role ?? "user");
 
-        // Animate success before redirect
         gsap.to(containerRef.current, {
           scale: 0.95,
           opacity: 0,
           duration: 0.4,
           ease: "expo.in",
-          onComplete: () => navigate("/dashboard"),
+          onComplete: () => navigate(home),
         });
-      } catch (e) {
+      } catch {
         gsap.fromTo(
           containerRef.current,
           { x: 0 },
@@ -57,8 +63,8 @@ export default function AuthCallback() {
       }
     };
 
-    doAuth();
-  }, [code, error, state, navigate]);
+    void doAuth();
+  }, [code, error, state, navigate, setToken, fetchUser]);
 
   return (
     <div className="min-h-dvh flex items-center justify-center px-4">

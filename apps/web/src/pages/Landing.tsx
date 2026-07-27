@@ -108,10 +108,10 @@ export default function Landing() {
                 color="#f59e0b"
                 speed="5s"
                 className="rounded-xl"
-                onClick={() => goProtected("/dashboard")}
+                onClick={() => void goProtected("/login")}
               >
                 <span className="flex items-center gap-2 px-2 py-0.5 text-sm font-semibold">
-                  Start your route
+                  Open portal
                   <ArrowRight className="size-4" />
                 </span>
               </StarBorder>
@@ -119,9 +119,9 @@ export default function Landing() {
                 size="lg"
                 variant="outline"
                 className="h-[52px] border-white/10 bg-white/[0.03] text-zinc-200 hover:bg-white/[0.06]"
-                onClick={() => goProtected("/orders")}
+                onClick={() => void goProtected("/login?role=rider")}
               >
-                Track an order
+                Rider sign-in
               </Button>
             </div>
           </FadeContent>
@@ -215,6 +215,7 @@ export default function Landing() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <FadeContent blur className="mb-12 text-center">
             <GradientText
+              centered
               colors={["#fbbf24", "#ffffff", "#f59e0b"]}
               className="font-display text-3xl sm:text-4xl"
             >
@@ -226,6 +227,7 @@ export default function Landing() {
           </FadeContent>
           <FadeContent blur delay={120}>
             <MagicBento
+              textAutoHide={false}
               enableStars
               enableSpotlight
               enableBorderGlow
@@ -285,7 +287,7 @@ export default function Landing() {
               as="button"
               type="button"
               color="#fbbf24"
-              onClick={() => goProtected("/dashboard")}
+              onClick={() => void goProtected("/login")}
             >
               <span className="flex items-center gap-2 px-4 py-1 text-base font-semibold">
                 Build your first route
@@ -307,23 +309,23 @@ export default function Landing() {
             items={[
               {
                 icon: <LayoutDashboard className="size-5 text-amber" />,
-                label: "Dashboard",
-                onClick: () => goProtected("/dashboard"),
+                label: "Traveler",
+                onClick: () => void goProtected("/login?role=user"),
               },
               {
                 icon: <Route className="size-5 text-sky-400" />,
-                label: "Plan route",
-                onClick: () => goProtected("/routes/new"),
+                label: "Rider",
+                onClick: () => void goProtected("/login?role=rider"),
               },
               {
                 icon: <MapPin className="size-5 text-emerald-400" />,
-                label: "Intercepts",
-                onClick: () => goProtected("/intercepts"),
+                label: "Admin",
+                onClick: () => void goProtected("/login?role=admin"),
               },
               {
                 icon: <Package className="size-5 text-violet-400" />,
-                label: "Orders",
-                onClick: () => goProtected("/orders"),
+                label: "Portal",
+                onClick: () => void goProtected("/login"),
               },
             ]}
           />

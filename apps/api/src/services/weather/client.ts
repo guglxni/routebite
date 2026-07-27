@@ -2,14 +2,31 @@ import type { LatLng } from '@routebite/shared/types';
 import { MAPS_CONFIG } from '@routebite/shared/constants';
 import {
   GOOGLE_WEATHER_ALERTS_BASE,
+  GOOGLE_WEATHER_CURRENT_BASE,
   GOOGLE_WEATHER_HOURLY_BASE,
 } from '../maps/constants';
-import { weatherAlertsCache, weatherHourlyCache, makeWeatherKey } from '../maps/cache';
+import {
+  weatherAlertsCache,
+  weatherCurrentCache,
+  weatherHourlyCache,
+  makeWeatherKey,
+} from '../maps/cache';
 
 export interface WeatherHourlySnapshot {
   precipitationProbability?: number;
   thunderstormProbability?: number;
   visibilityMeters?: number;
+}
+
+export interface WeatherCurrentSnapshot {
+  condition?: string;
+  conditionType?: string;
+  temperatureC?: number;
+  feelsLikeC?: number;
+  precipProbability?: number;
+  humidityPercent?: number;
+  windKph?: number;
+  source: 'google_weather';
 }
 
 export interface WeatherAlertSummary {
@@ -50,6 +67,60 @@ export class WeatherClient {
     ]);
 
     return buildWeatherContext(hourly, alerts);
+  }
+
+  async getCurrentConditions(point: LatLng): Promise<WeatherCurrentSnapshot> {
+    const cacheKey = makeWeatherKey(point.lat, point.lng, 'current');
+    const cached = weatherCurrentCache.get(cacheKey);
+    if (cached) return cached as WeatherCurrentSnapshot;
+
+    const url = new URL(GOOGLE_WEATHER_CURRENT_BASE);
+    url.searchParams.set('key', this.apiKey);
+    url.searchParams.set('location.latitude', String(point.lat));
+    url.searchParams.set('location.longitude', String(point.lng));
+
+    const res = await this.fetchFn(url.toString());
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Weather current error ${res.status}: ${text}`);
+    }
+
+    const data = (await res.json()) as {
+      weatherCondition?: {
+        description?: { text?: string };
+        type?: string;
+      };
+      temperature?: { degrees?: number };
+      feelsLikeTemperature?: { degrees?: number };
+      precipitation?: { probability?: { percent?: number } };
+      relativeHumidity?: number;
+      wind?: { speed?: { value?: number; unit?: string } };
+    };
+
+    const wind = data.wind?.speed;
+    let windKph: number | undefined;
+    if (wind?.value != null) {
+      windKph =
+        wind.unit === 'KILOMETERS_PER_HOUR' || !wind.unit
+          ? wind.value
+          : wind.unit === 'MILES_PER_HOUR'
+            ? wind.value * 1.60934
+            : wind.value;
+    }
+
+    const snapshot: WeatherCurrentSnapshot = {
+      condition: data.weatherCondition?.description?.text,
+      conditionType: data.weatherCondition?.type,
+      temperatureC: data.temperature?.degrees,
+      feelsLikeC: data.feelsLikeTemperature?.degrees,
+      precipProbability: data.precipitation?.probability?.percent,
+      humidityPercent: data.relativeHumidity,
+      windKph,
+      source: 'google_weather',
+    };
+
+    weatherCurrentCache.set(cacheKey, snapshot, MAPS_CONFIG.WEATHER_CACHE_TTL_MS);
+    return snapshot;
   }
 
   async getHourlySnapshot(point: LatLng): Promise<WeatherHourlySnapshot> {

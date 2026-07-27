@@ -22,6 +22,11 @@ CORE_APIS=(
   roads.googleapis.com
   addressvalidation.googleapis.com
   weather.googleapis.com
+  isochrones.googleapis.com
+  airquality.googleapis.com
+  pollen.googleapis.com
+  routeoptimization.googleapis.com
+  maps-backend.googleapis.com
 )
 
 gcloud services enable --project="${PROJECT}" "${CORE_APIS[@]}"
@@ -35,20 +40,12 @@ fi
 
 echo "==> Enabled services:"
 gcloud services list --enabled --project="${PROJECT}" \
-  --filter="config.name:routes OR config.name:geocod OR config.name:places OR config.name:roads OR config.name:address OR config.name:areainsights OR config.name:weather" \
+  --filter="config.name:routes OR config.name:geocod OR config.name:places OR config.name:roads OR config.name:address OR config.name:areainsights OR config.name:weather OR config.name:isochrones" \
   --format="table(config.name)"
 
 echo ""
-echo "==> Update API key restrictions (replace KEY_ID with your key UID):"
-echo "gcloud services api-keys update projects/PROJECT_NUMBER/locations/global/keys/KEY_ID \\"
-echo "  --project=${PROJECT} \\"
-echo "  --api-target=service=routes.googleapis.com \\"
-echo "  --api-target=service=geocoding-backend.googleapis.com \\"
-echo "  --api-target=service=places-backend.googleapis.com \\"
-echo "  --api-target=service=places.googleapis.com \\"
-echo "  --api-target=service=areainsights.googleapis.com \\"
-echo "  --api-target=service=roads.googleapis.com \\"
-echo "  --api-target=service=addressvalidation.googleapis.com \\"
-echo "  --api-target=service=weather.googleapis.com"
+echo "==> Next: FinOps + DevSecOps hardening (budgets, quotas, audit logs, key targets):"
+echo "  GCP_PROJECT=${PROJECT} GCP_BILLING_ACCOUNT=\$GCP_BILLING_ACCOUNT \\"
+echo "    ./scripts/harden-gcp-finops-secops.sh"
 echo ""
 echo "Done. Propagation may take 1–5 minutes before all APIs respond."

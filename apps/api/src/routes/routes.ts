@@ -17,6 +17,7 @@ import { journeys, intercepts } from '@routebite/db/schema';
 import crypto from 'crypto';
 import { eq, and } from 'drizzle-orm';
 import { GPSPositionSchema, VehicleDetailsSchema } from '@routebite/shared/schemas';
+import { buildJourneyCorridor } from '../services/fusion/corridor-journey';
 
 const app = new Hono();
 
@@ -146,7 +147,13 @@ app.post('/analyze', zValidator('json', AnalyzeRouteSchema), async (c) => {
     estimatedDuration: route.durationSeconds,
   });
 
-  const weatherWarnings = interceptPoints
+  // Verified Google Outdoor Conditions (Air Quality + Weather + Pollen)
+  const { fetchOutdoorConditions, dedupeWarningTitles } = await import(
+    '../services/environment/outdoor-conditions'
+  );
+  const outdoorConditions = await fetchOutdoorConditions(originLL).catch(() => null);
+
+  const interceptWarnings = interceptPoints
     .filter(p => p.weatherRisk)
     .map(p => ({
       lat: p.lat,
@@ -154,7 +161,16 @@ app.post('/analyze', zValidator('json', AnalyzeRouteSchema), async (c) => {
       title: p.weatherAlertTitle ?? 'Weather advisory',
     }));
 
-  // Store intercepts
+  const weatherWarnings = dedupeWarningTitles([
+    ...(outdoorConditions?.warningTitles.map(title => ({
+      lat: originLL.lat,
+      lng: originLL.lng,
+      title,
+    })) ?? []),
+    ...interceptWarnings,
+  ]);
+
+  // Store intercepts (include isochrone reachability payload)
   if (interceptPoints.length > 0) {
     await db.insert(intercepts).values(
       interceptPoints.map(p => ({
@@ -166,8 +182,10 @@ app.post('/analyze', zValidator('json', AnalyzeRouteSchema), async (c) => {
         score: p.score,
         estimatedDwellTime: p.dwellTime,
         restaurantCount: p.restaurantCount,
+        reachableRestaurantCount: p.reachableRestaurantCount ?? p.reachability?.reachableRestaurantCount,
         safetyRating: p.safetyRating,
         name: p.name,
+        reachabilityJson: p.reachability ? JSON.stringify(p.reachability) : null,
       }))
     );
   }
@@ -181,6 +199,7 @@ app.post('/analyze', zValidator('json', AnalyzeRouteSchema), async (c) => {
       interceptCount: interceptPoints.length,
       hasTolls: route.hasTolls ?? false,
       weatherWarnings,
+      outdoorConditions,
       trainRun: trainRunSnapshot
         ? {
             trainNumber: trainRunSnapshot.trainNumber,
@@ -192,6 +211,34 @@ app.post('/analyze', zValidator('json', AnalyzeRouteSchema), async (c) => {
         : undefined,
     },
   });
+});
+
+const OptimizeRouteSchema = z.object({
+  waypoints: z
+    .array(
+      z.object({
+        lat: z.number(),
+        lng: z.number(),
+        name: z.string().optional(),
+        type: z.enum(['origin', 'destination', 'pickup', 'delivery']),
+        dwellMinutes: z.number().optional(),
+      })
+    )
+    .min(2)
+    .max(25),
+  transportMode: z.enum(['car', 'bike', 'bus', 'train', 'metro', 'walk']).optional(),
+});
+
+// POST /api/v1/routes/optimize — register before /:journeyId
+app.post('/optimize', zValidator('json', OptimizeRouteSchema), async (c) => {
+  const data = c.req.valid('json');
+  const { optimizeMultiStopRoute } = await import('../services/route-optimization');
+  const { riderTransportMode } = await import('@routebite/shared/constants');
+  const result = await optimizeMultiStopRoute(
+    data.waypoints,
+    data.transportMode ?? riderTransportMode('food')
+  );
+  return c.json({ success: true, data: result });
 });
 
 // GET /api/v1/routes/:journeyId
@@ -275,19 +322,37 @@ app.get('/:journeyId/intercepts', async (c) => {
 
   return c.json({
     success: true,
-    data: points.map(p => ({
-      id: p.id,
-      lat: p.lat,
-      lng: p.lng,
-      type: p.type,
-      score: p.score,
-      dwellTime: p.estimatedDwellTime ?? 0,
-      restaurantCount: p.restaurantCount ?? 0,
-      safetyRating: p.safetyRating ?? 3,
-      name: p.name ?? undefined,
-      etaSeconds: stationIndex ? etaForStationIntercept(liveRun!.run, p.name, stationIndex) : undefined,
-      stationCode: parseStationCodeFromLabel(p.name),
-    })),
+    data: points.map(p => {
+      let reachability: unknown;
+      if (p.reachabilityJson) {
+        try {
+          reachability = JSON.parse(p.reachabilityJson);
+        } catch {
+          reachability = undefined;
+        }
+      }
+      return {
+        id: p.id,
+        lat: p.lat,
+        lng: p.lng,
+        type: p.type,
+        score: p.score,
+        dwellTime: p.estimatedDwellTime ?? 0,
+        restaurantCount: p.restaurantCount ?? 0,
+        reachableRestaurantCount:
+          p.reachableRestaurantCount ??
+          (reachability as { reachableRestaurantCount?: number } | undefined)
+            ?.reachableRestaurantCount ??
+          0,
+        safetyRating: p.safetyRating ?? 3,
+        name: p.name ?? undefined,
+        reachability,
+        etaSeconds: stationIndex
+          ? etaForStationIntercept(liveRun!.run, p.name, stationIndex)
+          : undefined,
+        stationCode: parseStationCodeFromLabel(p.name),
+      };
+    }),
   });
 });
 
@@ -341,6 +406,22 @@ app.patch('/:journeyId/telemetry', zValidator('json', TelemetrySchema), async (c
     .where(eq(journeys.id, journeyId));
 
   return c.json({ success: true, data: { vehicleDetails: merged } });
+});
+
+// GET /api/v1/routes/:journeyId/corridor — Food+Instamart coverage along stops
+app.get('/:journeyId/corridor', async (c) => {
+  const journeyId = c.req.param('journeyId');
+  const user = c.get('user');
+  const token = c.get('accessToken');
+  await requireJourneyOwnership(journeyId, user.id, c);
+  const limit = Math.min(parseInt(c.req.query('limit') ?? '5', 10) || 5, 8);
+  const corridor = await buildJourneyCorridor({
+    journeyId,
+    accessToken: token,
+    userName: user.name ?? undefined,
+    limit,
+  });
+  return c.json({ success: true, data: corridor });
 });
 
 export default app;

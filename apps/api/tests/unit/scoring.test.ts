@@ -53,4 +53,15 @@ describe('filterAndRankPoints', () => {
     expect(result).toHaveLength(2);
     expect(result[0].score).toBeGreaterThanOrEqual(result[1].score);
   });
+
+  test('soft-falls back to best scores when none pass minScore', () => {
+    const points = [
+      makePoint(40, 12.93, 77.62, 100),
+      makePoint(35, 12.95, 77.64, 200),
+      makePoint(30, 13.0, 77.7, 300),
+    ];
+    const result = filterAndRankPoints(points, 60, 5, 500);
+    expect(result.length).toBeGreaterThan(0);
+    expect(result[0].score).toBe(40);
+  });
 });

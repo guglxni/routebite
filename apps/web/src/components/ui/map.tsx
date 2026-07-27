@@ -1835,6 +1835,114 @@ function MapClusterLayer<
   return null;
 }
 
+type MapIsochroneLayerProps = {
+  id?: string;
+  /** GeoJSON Polygon or MultiPolygon ([lng, lat]) */
+  geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon | null | undefined;
+  fillColor?: string;
+  fillOpacity?: number;
+  lineColor?: string;
+  lineWidth?: number;
+  lineOpacity?: number;
+};
+
+/** Renders an Isochrones API GeoJSON polygon as fill + outline. */
+function MapIsochroneLayer({
+  id: propId,
+  geometry,
+  fillColor = "#38bdf8",
+  fillOpacity = 0.18,
+  lineColor = "#38bdf8",
+  lineWidth = 2,
+  lineOpacity = 0.75,
+}: MapIsochroneLayerProps) {
+  const { map, isLoaded } = useMap();
+  const autoId = useId();
+  const id = propId ?? autoId;
+  const sourceId = `isochrone-source-${id}`;
+  const fillId = `isochrone-fill-${id}`;
+  const lineId = `isochrone-line-${id}`;
+
+  useEffect(() => {
+    if (!isLoaded || !map) return;
+
+    map.addSource(sourceId, {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] },
+    });
+
+    map.addLayer({
+      id: fillId,
+      type: "fill",
+      source: sourceId,
+      paint: {
+        "fill-color": fillColor,
+        "fill-opacity": fillOpacity,
+      },
+    });
+
+    map.addLayer({
+      id: lineId,
+      type: "line",
+      source: sourceId,
+      paint: {
+        "line-color": lineColor,
+        "line-width": lineWidth,
+        "line-opacity": lineOpacity,
+      },
+    });
+
+    return () => {
+      try {
+        if (map.getLayer(fillId)) map.removeLayer(fillId);
+        if (map.getLayer(lineId)) map.removeLayer(lineId);
+        if (map.getSource(sourceId)) map.removeSource(sourceId);
+      } catch {
+        // ignore
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, map]);
+
+  useEffect(() => {
+    if (!isLoaded || !map) return;
+    const source = map.getSource(sourceId) as MapLibreGL.GeoJSONSource | undefined;
+    if (!source) return;
+
+    if (!geometry) {
+      source.setData({ type: "FeatureCollection", features: [] });
+      return;
+    }
+
+    source.setData({
+      type: "Feature",
+      properties: {},
+      geometry,
+    });
+  }, [isLoaded, map, geometry, sourceId]);
+
+  useEffect(() => {
+    if (!isLoaded || !map || !map.getLayer(fillId)) return;
+    map.setPaintProperty(fillId, "fill-color", fillColor);
+    map.setPaintProperty(fillId, "fill-opacity", fillOpacity);
+    map.setPaintProperty(lineId, "line-color", lineColor);
+    map.setPaintProperty(lineId, "line-width", lineWidth);
+    map.setPaintProperty(lineId, "line-opacity", lineOpacity);
+  }, [
+    isLoaded,
+    map,
+    fillId,
+    lineId,
+    fillColor,
+    fillOpacity,
+    lineColor,
+    lineWidth,
+    lineOpacity,
+  ]);
+
+  return null;
+}
+
 export {
   Map,
   useMap,
@@ -1848,6 +1956,7 @@ export {
   MapRoute,
   MapArc,
   MapClusterLayer,
+  MapIsochroneLayer,
 };
 
-export type { MapRef, MapViewport, MapArcDatum, MapArcEvent };
+export type { MapRef, MapViewport, MapArcDatum, MapArcEvent, MapIsochroneLayerProps };

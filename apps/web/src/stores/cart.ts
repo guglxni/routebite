@@ -8,7 +8,12 @@ export interface CartItem {
   price: number;
   quantity: number;
   variantId?: string;
+  variantName?: string;
+  addonIds?: string[];
+  addonNames?: string[];
   image?: string;
+  /** Instamart spinId when different from product id */
+  spinId?: string;
 }
 
 interface CartState {
@@ -44,11 +49,18 @@ export const useCart = create<CartState>()(
       setInterceptId: (interceptId) => set({ interceptId }),
 
       addItem: (item) => {
-        const existing = get().items.find((i) => i.id === item.id && i.variantId === item.variantId);
+        const existing = get().items.find(
+          (i) =>
+            i.id === item.id &&
+            i.variantId === item.variantId &&
+            (i.addonIds ?? []).join() === (item.addonIds ?? []).join()
+        );
         if (existing) {
           set({
             items: get().items.map((i) =>
-              i.id === item.id && i.variantId === item.variantId
+              i.id === item.id &&
+              i.variantId === item.variantId &&
+              (i.addonIds ?? []).join() === (item.addonIds ?? []).join()
                 ? { ...i, quantity: i.quantity + 1 }
                 : i
             ),

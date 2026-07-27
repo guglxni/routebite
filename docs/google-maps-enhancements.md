@@ -1,7 +1,7 @@
 # Google Maps Platform Enhancements — RouteBite
 
 **Status:** Partially implemented (MVP on `main`)  
-**Last updated:** 2026-06-03  
+**Last updated:** 2026-07-26  
 **Scope:** Integrate modern Google Maps Platform APIs to improve intercept scoring, restaurant discovery, journey–delivery alignment, and map UX.
 
 ---
@@ -31,10 +31,10 @@ RouteBite plans to deepen its Google Maps Platform integration across four layer
 
 | Layer | Goal | Key APIs |
 |-------|------|----------|
-| **Algorithm accuracy** | Replace placeholders with real geospatial data | Places Aggregate, Routes `extraComputations`, Weather |
-| **Discovery** | Find restaurants/products along the journey route | Text Search along route, Routing Summaries |
-| **Map UX** | Visual journey planning and intercept preview | Cloud styling, Places UI Kit, Photorealistic 3D Maps |
-| **Live alignment** | Sync customer arrival with rider delivery | Browser GPS + Routes recompute, Weather alerts |
+| **Algorithm accuracy** | Replace placeholders with real geospatial data | Places Aggregate, **Isochrones**, Routes `extraComputations`, Weather |
+| **Discovery** | Find restaurants/products along the journey route | Text Search along route, Routing Summaries, **isochrone PIP filter** |
+| **Map UX** | Visual journey planning and intercept preview | Cloud styling, Places UI Kit, **Isochrone polygons on MapLibre** |
+| **Live alignment** | Sync customer arrival with rider delivery | Browser GPS + Routes recompute, Weather alerts, **rider-outside-isochrone** |
 
 These enhancements directly support RouteBite's core value proposition: **order food and essentials at intercept points along your route, timed so rider and customer arrive together.**
 
@@ -76,8 +76,9 @@ Location: `apps/api/src/services/maps/`
 |-----|-------------------|----------|
 | Routes API v2 | `computeRoutes` | Journey polyline, steps, transit stop details |
 | Route Matrix API | `computeRouteMatrix` | Rider travel time for order timing, restaurant ranking |
+| **Isochrones API** | `isochrones:generate` | Rider `TO`+bike & walk `FROM` reachability polygons; PIP restaurant filter; map overlays |
 | Geocoding API | `geocode` / `reverseGeocode` | Address validation, station geocoding (trains) |
-| Places Aggregate / Nearby | `countRestaurantsNear` | Intercept restaurant density (`enrichment.ts`) |
+| Places Aggregate / Nearby | `countRestaurantsNear` + location Nearby | Circular density + isochrone PIP counts |
 | Weather API | hourly + alerts | Intercept safety scoring (`weather/client.ts`) |
 | Roads API | `snapToRoads` | Snap intercept points to drivable geometry |
 | Roads API | `getSpeedLimits` | Available but underutilized |
@@ -95,9 +96,11 @@ Supporting infrastructure:
 | Gap | Current behavior | File |
 |-----|------------------|------|
 | Traffic on route polyline | Types defined; optional via `ROUTES_EXTRA_COMPUTATIONS` | `apps/api/src/services/maps/client.ts` |
-| Customer live ETA | Swiggy + NTES/train context; browser GPS via telemetry PATCH | `apps/api/src/services/tracking/` |
-| Route optimization | Brute-force / greedy TSP via Routes API | `apps/api/src/services/route-optimization/index.ts` |
-| Map UX polish | MapLibre journey map shipped; 3D / UI Kit not integrated | `apps/web/src/components/map/` |
+| Search Along Route | Not yet discovery spine | `apps/api/src/services/maps/places.ts` |
+| Places Aggregate `customArea` | Circle density + PIP after isochrone | `reachability.ts` |
+| Cloud Route Optimization API | Scaffolded; default off | `route-optimization/index.ts` |
+| Places UI Kit place cards | Autocomplete only | `apps/web/src/components/places/` |
+| Photorealistic 3D / Aerial View | MapLibre journey map only | `apps/web/src/components/map/` |
 
 ---
 
@@ -260,6 +263,90 @@ routes.polylineDetails.flyoverInfo
 - [ ] Auto-place timestamp uses traffic-aware intercept ETA
 
 **Docs:** https://developers.google.com/maps/documentation/routes/compute-route-over
+
+---
+
+#### E3b. Isochrones API — True Rider & Walker Reachability ✅
+
+**Priority:** P0  
+**Effort:** Large  
+**SKU:** Isochrones API  
+**Status:** Implemented on `main`
+
+**Problem:** Restaurant density and “nearby” filters used circular radii (Places Aggregate 500 m). That overcounts kitchens across rivers/flyovers and undercounts corridor-reachable supply. Rider travel used Route Matrix only after a restaurant was chosen — discovery had no network reachability model.
+
+**Solution:** Google Isochrones API (`POST isochrones.googleapis.com/v1/isochrones:generate`) builds GeoJSON MultiPolygons for true road-network travel time.
+
+| Direction / mode | RouteBite use |
+|------------------|---------------|
+| `TO` + `BICYCLE` from intercept | Rider inbound zone — restaurants that can reach the pin in the dwell-derived budget |
+| `FROM` + `WALK` from intercept | Customer handoff / platform walk footprint |
+| Nearby Search + PIP | Count restaurants whose lat/lng fall inside the rider polygon |
+| MapLibre fill layers | Purple = rider zone, green = walk zone on Journey / Menu maps |
+
+**Budgets:** `ISOCHRONE` in `@routebite/shared/constants` — bike buffer 12% (no TWO_WHEELER mode), clamp 8–25 min rider, 4 min walk. Formula: `(dwell − prepReserve − safety − traffic) × bikeBuffer`.
+
+**Integration points:**
+
+- `apps/api/src/services/maps/isochrones.ts` — client + cache
+- `apps/api/src/services/maps/reachability.ts` — dual-sided attach + PIP
+- `apps/api/src/services/intercept/scoring.ts` — `REACHABILITY` weight (25)
+- `apps/api/src/services/order/restaurant-rank.ts` — rank + filter by isochrone
+- `apps/api/src/services/order/placement.ts` — soft-block outside zone
+- `apps/api/src/services/tracking/alignment.ts` — rider-outside-isochrone demotion
+- DB: `intercepts.reachable_restaurant_count`, `intercepts.reachability_json`
+- Web: `MapIsochroneLayer`, Menu “In zone” badges
+
+**Docs:** https://developers.google.com/maps/documentation/isochrones/overview  
+**Enable:** `isochrones.googleapis.com` via `scripts/enable-gcp-maps-apis.sh`
+
+---
+
+#### E3d. Agent-skills / AI-DLC hardening (2026-07) ✅
+
+Installed and enforced:
+
+| Asset | Purpose |
+|-------|---------|
+| `.agents/skills/google-maps-platform` | Official GMP agent skill ([repo](https://github.com/googlemaps/agent-skills?utm_campaign=gmp_git_agentskills_v1)) |
+| `.agents/skills/gcloud` | Official GCP CLI skill ([google/skills](https://github.com/google/skills)) |
+| `.cursor/rules/google-maps-aidlc.mdc` | Agent steering for Maps edits |
+| `scripts/check-maps-compliance.sh` | Legacy-API / CORS / key / region gate |
+| `.github/workflows/ci.yml` | Unit tests + typecheck + compliance + gitleaks |
+
+Auth correction (gmp-common-api-keys): Places Aggregate + Cloud Route Optimization now use ADC (`getGoogleAccessToken`); API-key path falls back to Nearby Search / Routes `optimizeWaypointOrder`.
+
+---
+
+#### E3c. Strong product upgrades (2026-07) ✅ / partial
+
+| Feature | Status | Integration |
+|---------|--------|-------------|
+| **Places UI Kit** Autocomplete | ✅ Web (opt-in via `VITE_GOOGLE_MAPS_API_KEY`) | `PlaceAutocompleteInput` → `QuickRouteForm`; datalist fallback |
+| **Track departure-time recompute** | ✅ | Live GPS on `TrackOrder` → telemetry PATCH → `getTravelTime(..., departureTime)` |
+| **Route Optimization** | ✅ | `optimizeWaypointOrder` + `POST /api/v1/routes/optimize`; Cloud API optional |
+| **Air Quality + Pollen** | ✅ | `environment/client.ts` → enrichment safety (with Weather) |
+| **TWO_WHEELER routing** | ✅ | `bike` → `TWO_WHEELER` on Routes/Matrix; `riderTransportMode('food')` |
+
+**Flags** (`MAPS_FEATURES`): `PLACES_UI_KIT`, `TRACK_DEPARTURE_TIME_RECOMPUTE`, `ROUTE_OPTIMIZATION`, `ROUTE_OPTIMIZATION_CLOUD_API`, `AIR_QUALITY_SAFETY`, `POLLEN_SAFETY`, `RIDER_TWO_WHEELER`.
+
+**Enable APIs:** `airquality.googleapis.com`, `pollen.googleapis.com`, `routeoptimization.googleapis.com`, `maps-backend.googleapis.com` via `scripts/enable-gcp-maps-apis.sh`.
+
+**Client env (web):**
+
+```bash
+# apps/web/.env
+VITE_GOOGLE_MAPS_API_KEY=          # referrer-restricted Places UI Kit key
+# VITE_GOOGLE_MAPS_API_KEY_CLIENT= # alias
+```
+
+**Docs:**
+
+- Places UI Kit: https://developers.google.com/maps/documentation/javascript/places-ui-kit/overview
+- Air Quality: https://developers.google.com/maps/documentation/air-quality
+- Pollen: https://developers.google.com/maps/documentation/pollen
+- Route Optimization: https://developers.google.com/maps/documentation/route-optimization/overview
+- TWO_WHEELER: https://developers.google.com/maps/documentation/routes/reference/rest/v2/RouteTravelMode
 
 ---
 
@@ -842,11 +929,14 @@ Content-Type: application/json
 
 ### Google Cloud setup checklist
 
-- [ ] Enable APIs: Routes, Places (New), Places Aggregate, Weather, Maps JavaScript, Places UI Kit
+- [x] Enable APIs: Routes, Places (New), Places Aggregate, Weather, Maps JavaScript, Isochrones (`scripts/enable-gcp-maps-apis.sh`)
 - [ ] Create Map ID(s) for web styling
-- [ ] Set daily quota alerts
-- [ ] Restrict API keys (server IP for API; HTTP referrer for Maps JS)
-- [ ] Review Maps Demo Key for dev/staging separation
+- [x] Monthly budget + threshold alerts (INR; account currency)
+- [x] Consumer quota caps (daily + per-minute) via `scripts/harden-gcp-finops-secops.sh`
+- [x] Project labels + Cloud Audit Logs + essential contacts
+- [x] API-target restrict Maps key (add IP / referrer before production)
+- [ ] Split server vs client keys; rotate demo key for prod project
+- [ ] Optional: BigQuery billing export (`ENABLE_BQ_EXPORT=1`)
 
 ---
 
@@ -878,6 +968,10 @@ export const MAPS_FEATURES = {
   PLACES_AGGREGATE: true,
   ROUTES_EXTRA_COMPUTATIONS: true,
   WEATHER_SAFETY: true,
+  ISOCHRONES: true,
+  ISOCHRONE_RESTAURANT_PIP: true,
+  ISOCHRONE_UI_POLYGONS: true,
+  ISOCHRONE_TRACKING: true,
   LIVE_GPS_ALIGNMENT: false,  // Phase 4
   MAP_3D: false,              // Phase 3 optional
 };

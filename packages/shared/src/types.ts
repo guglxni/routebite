@@ -24,6 +24,9 @@ export type TimingType = 'now' | 'auto';
 
 export type JourneyStatus = 'active' | 'completed' | 'cancelled';
 
+/** Portal RBAC roles — each maps to an isolated dashboard. */
+export type PortalRole = 'user' | 'rider' | 'admin';
+
 // ─── Geo ─────────────────────────────────────────────────────────────────────
 
 export interface LatLng {
@@ -101,6 +104,33 @@ export interface RouteAnalysis {
 
 // ─── Intercept Point ─────────────────────────────────────────────────────────
 
+/** GeoJSON MultiPolygon / Polygon from Isochrones API (coordinates [lng, lat]). */
+export type IsochroneGeometry = {
+  type: 'MultiPolygon' | 'Polygon';
+  coordinates: number[][][] | number[][][][];
+};
+
+export interface InterceptReachability {
+  /** Rider budget used for inbound bike isochrone (seconds). */
+  riderBudgetSeconds: number;
+  /** Walk / handoff budget (seconds). */
+  walkBudgetSeconds: number;
+  /** Restaurants with locations inside the rider inbound isochrone. */
+  reachableRestaurantCount: number;
+  /** Circular Places count (legacy) for comparison. */
+  circularRestaurantCount?: number;
+  /** Approx rider-isochrone area m². */
+  riderAreaM2?: number;
+  /** True when Isochrones API succeeded for this intercept. */
+  isochroneOk: boolean;
+  /** Inbound bike polygon (restaurants that can reach the pin). */
+  riderIsochrone?: IsochroneGeometry;
+  /** Walk catchment around intercept for handoff. */
+  walkIsochrone?: IsochroneGeometry;
+  travelMode?: 'BICYCLE' | 'WALK' | 'DRIVE';
+  travelDirection?: 'TO' | 'FROM';
+}
+
 export interface InterceptPoint {
   id: string;
   journeyId: string;
@@ -110,8 +140,11 @@ export interface InterceptPoint {
   score: number;
   estimatedDwellTime: number; // seconds
   restaurantCount?: number;
+  /** True network-reachable restaurant count (isochrone PIP). */
+  reachableRestaurantCount?: number;
   safetyRating?: number;
   name?: string;
+  reachability?: InterceptReachability;
 }
 
 // ─── Restaurant / Food ───────────────────────────────────────────────────────

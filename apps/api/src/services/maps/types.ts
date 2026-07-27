@@ -6,6 +6,8 @@ import type { GoogleLatLng } from './google-latlng';
 export interface ComputeRoutesRequest {
   origin: { address: string } | { location: { latLng: GoogleLatLng } };
   destination: { address: string } | { location: { latLng: GoogleLatLng } };
+  intermediates?: Array<{ location: { latLng: GoogleLatLng } }>;
+  optimizeWaypointOrder?: boolean;
   travelMode: string;
   routingPreference?: string;
   departureTime?: string;
@@ -34,6 +36,8 @@ export interface Route {
   warnings?: string[];
   viewport?: Viewport;
   travelAdvisory?: TravelAdvisory;
+  /** Present when optimizeWaypointOrder was requested */
+  optimizedIntermediateWaypointIndex?: number[];
 }
 
 export interface RouteLeg {
@@ -131,6 +135,7 @@ export interface RouteMatrixRequest {
   destinations: RouteMatrixWaypoint[];
   travelMode: string;
   routingPreference?: string;
+  departureTime?: string;
   units?: 'METRIC' | 'IMPERIAL';
   languageCode?: string;
 }
@@ -245,6 +250,8 @@ export interface JourneyRoute {
   steps: RouteStep[];
   travelAdvisory?: RouteTravelAdvisory;
   hasTolls?: boolean;
+  /** Reordered intermediate indices when optimizeWaypointOrder=true */
+  optimizedIntermediateWaypointIndex?: number[];
 }
 
 export interface ComputeRouteOptions {
@@ -252,6 +259,17 @@ export interface ComputeRouteOptions {
   avoidTolls?: boolean;
   avoidHighways?: boolean;
   extraComputations?: boolean;
+  intermediates?: LatLng[];
+  optimizeWaypointOrder?: boolean;
+  /**
+   * Override TRANSPORT_MODE_MAP routingPreference.
+   * Required for optimizeWaypointOrder — Google rejects TRAFFIC_AWARE_OPTIMAL.
+   */
+  routingPreference?: 'TRAFFIC_UNAWARE' | 'TRAFFIC_AWARE' | 'TRAFFIC_AWARE_OPTIMAL';
+}
+
+export interface ComputeMatrixOptions {
+  departureTime?: Date;
 }
 
 export interface MapsServiceConfig {

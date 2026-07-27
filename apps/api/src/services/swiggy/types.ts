@@ -1,10 +1,11 @@
 import type { ApiResponse } from '@routebite/shared/types';
 
-// ─── MCP Tool Names ──────────────────────────────────────────────────────────
+// ─── MCP Tool Names (Builders Club reference — do not invent) ───────────────
+// Food: https://mcp.swiggy.com/builders/docs/reference/food/index.md (14)
+// Instamart: https://mcp.swiggy.com/builders/docs/reference/instamart/index.md (13)
 
 export type FoodTool =
   | 'get_addresses'
-  | 'create_address'
   | 'search_restaurants'
   | 'get_restaurant_menu'
   | 'search_menu'
@@ -22,17 +23,26 @@ export type FoodTool =
 export type InstamartTool =
   | 'get_addresses'
   | 'create_address'
-  | 'search_instamart_products'
-  | 'update_instamart_cart'
-  | 'get_instamart_cart'
-  | 'place_instamart_order'
-  | 'get_instamart_orders'
-  | 'get_instamart_order_details'
-  | 'track_instamart_order'
-  | 'confirm_instamart_delivery'
+  | 'delete_address'
+  | 'search_products'
+  | 'your_go_to_items'
+  | 'update_cart'
+  | 'get_cart'
+  | 'clear_cart'
+  | 'checkout'
+  | 'get_orders'
+  | 'get_order_details'
+  | 'track_order'
   | 'report_error';
 
 export type SwiggyTool = FoodTool | InstamartTool;
+
+export type SwiggyServer = 'food' | 'instamart';
+
+/** Live MCP path segment — Instamart is `/im`, not `/instamart`. */
+export function swiggyServerPath(server: SwiggyServer): 'food' | 'im' {
+  return server === 'instamart' ? 'im' : 'food';
+}
 
 // ─── Tool Request/Response ───────────────────────────────────────────────────
 
@@ -66,11 +76,11 @@ export interface OAuthError {
 // ─── Swiggy Error Classification ─────────────────────────────────────────────
 
 export type SwiggyErrorType =
-  | 'auth'      // 401 — needs re-authentication
+  | 'auth' // 401 — needs re-authentication
   | 'rate_limit' // 429 — back off
-  | 'server'    // 5xx — retry with backoff
-  | 'client'    // 4xx (not 401) — bad request, don't retry
-  | 'network'   // fetch failure — retry
+  | 'server' // 5xx — retry with backoff
+  | 'client' // 4xx (not 401) — bad request, don't retry
+  | 'network' // fetch failure — retry
   | 'unknown';
 
 export interface ClassifiedError {

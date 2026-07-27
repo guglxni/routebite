@@ -3,8 +3,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"bun run dev:api\" \"bun run dev:vite\"",
-    "dev:api": "bun --watch api/index.ts",
+    "dev": "vite",
     "dev:vite": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
@@ -30,6 +29,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.0.0",
+    "recharts": "3.8.0",
     "shadcn": "^4.10.0",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.6.0",

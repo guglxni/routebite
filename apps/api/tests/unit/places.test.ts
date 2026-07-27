@@ -4,14 +4,24 @@ import {
   fallbackRestaurantCount,
 } from '../../src/services/maps/places';
 
+/**
+ * Aggregate requires ADC (agent-skills). Without ADC, client uses Nearby Search.
+ * Unit tests run with NODE_ENV=test → getGoogleAccessToken() returns null.
+ */
 describe('PlacesInsightsClient', () => {
-  test('deduplicates grid cells when batch counting', async () => {
+  test('deduplicates grid cells when batch counting (Nearby path without ADC)', async () => {
     const fetchCalls: string[] = [];
     const client = new PlacesInsightsClient({
       apiKey: 'test-key',
       fetchFn: async (input) => {
         fetchCalls.push(String(input));
-        return new Response(JSON.stringify({ count: '7' }), { status: 200 });
+        // Nearby Search shape
+        return new Response(
+          JSON.stringify({
+            places: Array.from({ length: 7 }, (_, i) => ({ id: `p${i}` })),
+          }),
+          { status: 200 }
+        );
       },
     });
 
@@ -27,15 +37,12 @@ describe('PlacesInsightsClient', () => {
     expect(counts.get('12.941,77.630')).toBe(7);
   });
 
-  test('falls back to nearby search when aggregate fails', async () => {
+  test('uses Nearby Search when Aggregate ADC is unavailable', async () => {
     let call = 0;
     const client = new PlacesInsightsClient({
       apiKey: 'test-key',
       fetchFn: async () => {
         call += 1;
-        if (call === 1) {
-          return new Response('aggregate unavailable', { status: 403 });
-        }
         return new Response(JSON.stringify({ places: [{ id: '1' }, { id: '2' }] }), {
           status: 200,
         });
@@ -44,7 +51,8 @@ describe('PlacesInsightsClient', () => {
 
     const count = await client.countRestaurantsNear({ lat: 12.93, lng: 77.62 });
     expect(count).toBe(2);
-    expect(call).toBe(2);
+    // Only Nearby — Aggregate short-circuits without ADC
+    expect(call).toBe(1);
   });
 
   test('falls back to heuristic when all Places APIs fail', async () => {

@@ -1,0 +1,26 @@
+# Gitleaks configuration for RouteBite
+# Extends defaults; allowlists known non-secret protocol constants.
+
+title = "RouteBite"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Indian Railways NTES client protocol constants (public in ntes-client; not RouteBite credentials)"
+paths = [
+  '''(^|/)apps/api/src/services/railways/ntes/crypto\.ts$''',
+]
+regexes = [
+  '''645fbc1e56e23365f2f3c204ae0899f6''',
+  '''8EA4DB2CC1EB3DC5''',
+  '''7DC5EB3BB4DB6EA8''',
+]
+
+[[allowlists]]
+description = "Example / placeholder tokens in docs and env templates"
+paths = [
+  '''(^|/)\.env\.example$''',
+  '''(^|/)\.env\.mvp\.example$''',
+  '''(^|/)apps/.*/\.env\.example$''',
+]

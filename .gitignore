@@ -26,8 +26,8 @@ coverage/
 credentials.json
 service-account*.json
 **/secrets/
-**/*secret*
-**/*credentials*
+.env.mvp
+.aws-mvp-ip
 
 # ─── Local databases ─────────────────────────────────────────────────────────
 *.db
@@ -56,7 +56,7 @@ yarn-debug.log*
 yarn-error.log*
 bun-debug.log*
 
-# ─── AI / agent tooling (internal, may contain session context) ─────────────
+# ─── AI / agent tooling (local only) ────────────────────────────────────────
 .cursor/
 .specstory/
 .claude/
@@ -64,19 +64,35 @@ bun-debug.log*
 graphify-out/
 .aidlc/
 .aidlc-rule-details/
+.openship/
+openship.json
+# Keep AGENTS.md / CLAUDE.md / .agents/skills committed for CI + contributors.
+.agents/**/node_modules/
+.agents/**/.cache/
 
 # ─── Vendored workflow tooling (not RouteBite product source) ───────────────
 aidlc-workflows/
 
-# ─── Internal archives & session dumps ───────────────────────────────────────
+# ─── Internal archives, dumps, drafts ───────────────────────────────────────
 session-*.zip
 *.zip
+!docs/**/*.zip
 Gemini_Generated_Image_*.png
-
-# ─── Internal research & drafts (not for public repo) ───────────────────────
 research/
 feasibility-analysis.md
 feasibility-analysis-real-project.md
+/tmp/
+*.tgz
+*.tar.gz
 
-# ─── Agent-specific project notes ───────────────────────────────────────────
-CLAUDE.md
+# ─── Vercel / local deploy link state ───────────────────────────────────────
+.vercel/
+apps/web/.vercel/
+apps/web/dist/.vercel/
+
+# ─── Test / playwright artifacts ────────────────────────────────────────────
+test-results/
+playwright-report/
+blob-report/
+docs/assets/logo.png
+docs/diagrams/*.svg

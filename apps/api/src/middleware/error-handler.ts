@@ -60,13 +60,20 @@ export function errorHandler(err: Error, c: Context): Response {
     return c.json(body, 400 as any);
   }
 
-  // Swiggy MCP errors
-  if (err.message?.includes('UNAUTHORIZED') || err.message?.includes('401')) {
+  // Swiggy MCP auth failures — distinct from portal session UNAUTHORIZED
+  if (
+    err.message?.includes('UNAUTHORIZED') ||
+    err.message?.includes('401') ||
+    (err instanceof RouteBiteError && err.code === 'SWIGGY_REAUTH_REQUIRED')
+  ) {
     const body: ApiErrorResponse = {
       success: false,
       error: {
-        code: 'UNAUTHORIZED',
-        message: 'Swiggy authentication required. Please re-authenticate.',
+        code: err instanceof RouteBiteError ? err.code : 'SWIGGY_REAUTH_REQUIRED',
+        message:
+          err instanceof RouteBiteError
+            ? err.message
+            : 'Swiggy authentication required. Please re-authenticate.',
         requestId,
       },
     };

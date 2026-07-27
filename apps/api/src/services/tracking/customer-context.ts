@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { getDb } from '@routebite/db/client';
 import { orders, journeys, intercepts } from '@routebite/db/schema';
 import type { GPSPosition, LatLng, TransportMode, VehicleDetails } from '@routebite/shared/types';
+import { MAPS_FEATURES } from '@routebite/shared/constants';
 import { mapsClient } from '../maps/client';
 import { buildRiderBrief, parseVehicleDetails } from '../order/rider-brief';
 import { generateInterceptAddress } from '../order/address';
@@ -9,6 +10,7 @@ import { getTrainRun } from '../railways/train-run';
 import { etaForStationIntercept } from '../railways/train-journey';
 
 export interface CustomerContext {
+  journeyId: string;
   transportMode: TransportMode;
   vehicleDetails: VehicleDetails;
   riderBrief: string;
@@ -23,6 +25,8 @@ export interface CustomerContext {
   liveLocation?: GPSPosition;
   customerPosition?: LatLng;
   customerETA?: number;
+  /** True when ETA came from live GPS → Route Matrix (departure-time aware). */
+  etaFromLiveGps?: boolean;
 }
 
 function mapsModeForCustomer(transportMode: TransportMode): TransportMode {
@@ -45,7 +49,8 @@ export async function loadCustomerContextForOrder(orderId: string): Promise<Cust
   if (!journey || !intercept) return null;
 
   const vehicleDetails =
-    parseVehicleDetails(journey.vehicleDetailsJson) ?? ({ description: 'RouteBite journey' } satisfies VehicleDetails);
+    parseVehicleDetails(journey.vehicleDetailsJson) ??
+    ({ description: 'RouteBite journey' } satisfies VehicleDetails);
 
   const transportMode = journey.transportMode as TransportMode;
   const interceptLabel = intercept.name ?? undefined;
@@ -59,13 +64,16 @@ export async function loadCustomerContextForOrder(orderId: string): Promise<Cust
 
   const riderBrief = buildRiderBrief(transportMode, vehicleDetails, interceptLabel ?? interceptAddress);
 
-  const liveLocationSharing = Boolean(vehicleDetails.liveLocationSharing && vehicleDetails.liveLocation);
+  const liveLocationSharing = Boolean(
+    vehicleDetails.liveLocationSharing && vehicleDetails.liveLocation
+  );
   const liveLocation = liveLocationSharing ? vehicleDetails.liveLocation : undefined;
   const customerPosition: LatLng | undefined = liveLocation
     ? { lat: liveLocation.lat, lng: liveLocation.lng }
     : { lat: intercept.lat, lng: intercept.lng };
 
   let customerETA: number | undefined;
+  let etaFromLiveGps = false;
 
   if (transportMode === 'train' && vehicleDetails.trainNumber) {
     try {
@@ -77,14 +85,36 @@ export async function loadCustomerContextForOrder(orderId: string): Promise<Cust
     }
   }
 
-  if (customerETA == null && liveLocation) {
+  if (
+    customerETA == null &&
+    liveLocation &&
+    MAPS_FEATURES.TRACK_DEPARTURE_TIME_RECOMPUTE
+  ) {
+    try {
+      const eta = await mapsClient.getTravelTime(
+        { lat: liveLocation.lat, lng: liveLocation.lng },
+        { lat: intercept.lat, lng: intercept.lng },
+        mapsModeForCustomer(transportMode),
+        { departureTime: new Date(Date.now() + 120_000) }
+      );
+      if (eta > 0) {
+        customerETA = eta;
+        etaFromLiveGps = true;
+      }
+    } catch {
+      // Keep fallback
+    }
+  } else if (customerETA == null && liveLocation) {
     try {
       const eta = await mapsClient.getTravelTime(
         { lat: liveLocation.lat, lng: liveLocation.lng },
         { lat: intercept.lat, lng: intercept.lng },
         mapsModeForCustomer(transportMode)
       );
-      if (eta > 0) customerETA = eta;
+      if (eta > 0) {
+        customerETA = eta;
+        etaFromLiveGps = true;
+      }
     } catch {
       // Keep fallback
     }
@@ -95,6 +125,7 @@ export async function loadCustomerContextForOrder(orderId: string): Promise<Cust
   }
 
   return {
+    journeyId: journey.id,
     transportMode,
     vehicleDetails,
     riderBrief,
@@ -109,5 +140,6 @@ export async function loadCustomerContextForOrder(orderId: string): Promise<Cust
     liveLocation,
     customerPosition,
     customerETA,
+    etaFromLiveGps,
   };
 }

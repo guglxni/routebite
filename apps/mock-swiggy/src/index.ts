@@ -28,16 +28,18 @@ app.get("/.well-known/oauth-authorization-server", (c) =>
 
 app.route("/auth", authRouter);
 app.route("/food", foodRouter);
+// Live Builders Club path is /im; keep /instamart as a local alias.
+app.route("/im", instamartRouter);
 app.route("/instamart", instamartRouter);
 
 // Health
-app.get("/health", (c) => c.json({ status: "ok", servers: ["food", "instamart"] }));
+app.get("/health", (c) => c.json({ status: "ok", servers: ["food", "im"] }));
 
 const port = 8788;
 console.log(`🍔 Mock Swiggy MCP running on http://localhost:${port}`);
-console.log(`   Food:    http://localhost:${port}/food`);
-console.log(`   Instamart: http://localhost:${port}/instamart`);
-console.log(`   Auth:    http://localhost:${port}/auth/authorize`);
+console.log(`   Food:      http://localhost:${port}/food`);
+console.log(`   Instamart: http://localhost:${port}/im  (alias /instamart)`);
+console.log(`   Auth:      http://localhost:${port}/auth/authorize`);
 
 export default {
   port,

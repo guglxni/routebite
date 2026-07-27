@@ -5,8 +5,16 @@ import {
   GOOGLE_PLACES_AGGREGATE_BASE,
   GOOGLE_PLACES_NEARBY_BASE,
   PLACES_NEARBY_FIELD_MASK,
+  PLACES_NEARBY_LOCATION_FIELD_MASK,
 } from './constants';
 import { placesCountCache, makePlacesCountKey } from './cache';
+
+export interface RestaurantLocation {
+  id: string;
+  lat: number;
+  lng: number;
+  name?: string;
+}
 
 export interface PlacesClientDeps {
   apiKey: string;
@@ -75,7 +83,74 @@ export class PlacesInsightsClient {
     return gridCounts.get(gridKey) ?? fallbackRestaurantCount(point);
   }
 
+  /**
+   * Nearby Search with locations — used for isochrone point-in-polygon filtering.
+   * Caps at 20 results per Places API limit; radius should cover the isochrone bbox.
+   */
+  async listRestaurantLocationsNear(
+    point: LatLng,
+    radiusM: number
+  ): Promise<RestaurantLocation[]> {
+    const body = {
+      includedTypes: ['restaurant'],
+      maxResultCount: 20,
+      locationRestriction: {
+        circle: {
+          center: { latitude: point.lat, longitude: point.lng },
+          radius: Math.min(radiusM, 50000),
+        },
+      },
+    };
+
+    const res = await this.fetchFn(GOOGLE_PLACES_NEARBY_BASE, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': this.apiKey,
+        'X-Goog-FieldMask': PLACES_NEARBY_LOCATION_FIELD_MASK,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Places Nearby (locations) error ${res.status}: ${text}`);
+    }
+
+    const data = (await res.json()) as {
+      places?: Array<{
+        id?: string;
+        displayName?: { text?: string };
+        location?: { latitude?: number; longitude?: number };
+      }>;
+    };
+
+    const out: RestaurantLocation[] = [];
+    for (const p of data.places ?? []) {
+      const lat = p.location?.latitude;
+      const lng = p.location?.longitude;
+      if (typeof lat !== 'number' || typeof lng !== 'number') continue;
+      out.push({
+        id: p.id ?? `${lat},${lng}`,
+        lat,
+        lng,
+        name: p.displayName?.text,
+      });
+    }
+    return out;
+  }
+
   private async countViaAggregate(point: LatLng, radiusM: number): Promise<number> {
+    // Places Aggregate requires OAuth/ADC — API keys return 401
+    // (google-maps-platform / gmp-common-api-keys agent skill).
+    const { getGoogleAccessToken } = await import('./google-auth');
+    const accessToken = await getGoogleAccessToken();
+    if (!accessToken) {
+      throw new Error(
+        'Places Aggregate requires Application Default Credentials (ADC); falling back to Nearby Search'
+      );
+    }
+
     const body = {
       insights: ['INSIGHT_COUNT'],
       filter: {
@@ -94,7 +169,9 @@ export class PlacesInsightsClient {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Goog-Api-Key': this.apiKey,
+        Authorization: `Bearer ${accessToken}`,
+        'X-Goog-User-Project':
+          process.env.GOOGLE_CLOUD_PROJECT ?? process.env.GCP_PROJECT ?? '',
       },
       body: JSON.stringify(body),
     });

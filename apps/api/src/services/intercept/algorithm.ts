@@ -1,5 +1,5 @@
 import type { TransportMode } from '@routebite/shared/types';
-import { INTERCEPT_ALGORITHMS } from '@routebite/shared/constants';
+import { INTERCEPT_ALGORITHMS, INTERCEPT_SCORING } from '@routebite/shared/constants';
 import { GeohashSpatialIndex } from '@routebite/shared/algorithms';
 import type { JourneyRoute } from '../maps/types';
 import { mapsClient } from '../maps/client';
@@ -9,8 +9,8 @@ import { enrichCandidates } from './enrichment';
 import { haversineDistance, estimateSpeed, makeInterceptId } from './utils';
 
 const DEFAULT_CONFIG: InterceptConfig = {
-  minScore: 60,
-  minDwellTime: 3 * 60, // 3 minutes
+  minScore: INTERCEPT_SCORING.MIN_SCORE,
+  minDwellTime: INTERCEPT_SCORING.MIN_DWELL_TIME_S,
   maxPoints: 5,
   intervalMeters: 500,
 };
@@ -172,7 +172,28 @@ export async function computeInterceptPoints(
     }
   }
 
-  return ranked;
+  // Isochrones: true rider/walk reachability on final ranked set, then re-score
+  return attachIsochroneReachability(ranked);
+}
+
+/** Attach Isochrones polygons + PIP restaurant counts; re-score with REACHABILITY weight. */
+export async function attachIsochroneReachability(
+  points: ScoredInterceptPoint[]
+): Promise<ScoredInterceptPoint[]> {
+  if (points.length === 0) return points;
+  try {
+    const withReach = await mapsClient.attachReachabilityToPoints(points);
+    return withReach.map((p) => ({
+      ...p,
+      score: scoreInterceptPoint(p),
+    }));
+  } catch (err) {
+    console.warn(
+      '[intercept] isochrone attach failed:',
+      err instanceof Error ? err.message : err
+    );
+    return points;
+  }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

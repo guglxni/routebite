@@ -16,8 +16,8 @@ export async function checkForDuplicateOrder(
   try {
     const response =
       server === 'food'
-        ? await swiggyClient.callTool('get_food_orders', {}, 'food')
-        : await swiggyClient.callTool('get_instamart_orders', {}, 'instamart');
+        ? await swiggyClient.getFoodOrders()
+        : await swiggyClient.getInstamartOrders();
 
     if (!response.success || !response.data) return null;
 

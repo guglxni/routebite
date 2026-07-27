@@ -1,5 +1,5 @@
-import type { LatLng } from '@routebite/shared/types';
-import { TIMING } from '@routebite/shared/constants';
+import type { LatLng, TransportMode } from '@routebite/shared/types';
+import { TIMING, riderTransportMode } from '@routebite/shared/constants';
 import { mapsClient } from '../maps/client';
 import { weatherClient } from '../weather/client';
 import type { TimingCalculation } from './types';
@@ -21,8 +21,16 @@ export async function calculateOrderTiming(
     restaurant: LatLng;
     intercept: LatLng;
   },
-  opts?: { includeWeatherBuffer?: boolean }
+  opts?: { includeWeatherBuffer?: boolean; server?: 'food' | 'instamart' }
 ): Promise<TimingCalculation> {
+  // Prefer explicit TWO_WHEELER (bike) for food riders; fall back to caller mode.
+  const riderMode: TransportMode =
+    opts?.server != null
+      ? riderTransportMode(opts.server)
+      : transportMode === 'car' || transportMode === 'bike'
+        ? (transportMode as TransportMode)
+        : riderTransportMode('food');
+
   // Use real matrix ETA if we have coordinates, else fallback heuristic
   let riderTravel: number;
   if (coordinates) {
@@ -30,7 +38,8 @@ export async function calculateOrderTiming(
       riderTravel = await mapsClient.getTravelTime(
         coordinates.restaurant,
         coordinates.intercept,
-        transportMode as 'car' | 'bike' | 'bus' | 'train' | 'metro' | 'walk'
+        riderMode,
+        { departureTime: new Date(Date.now() + 120_000) }
       );
     } catch {
       riderTravel = fallbackRiderTravel(0);
@@ -134,7 +143,8 @@ export async function rankRestaurantsByTravelTime(
   const matrix = await mapsClient.computeRouteMatrix(
     restaurantLocations,
     [intercept],
-    transportMode
+    transportMode,
+    { departureTime: new Date(Date.now() + 120_000) }
   );
 
   return restaurantLocations

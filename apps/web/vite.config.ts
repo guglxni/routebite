@@ -15,6 +15,10 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: "autoUpdate",
+      workbox: {
+        // Main bundle exceeds Workbox's 2 MiB default; still cache for MVP PWA.
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+      },
       manifest: {
         name: "RouteBite",
         short_name: "RouteBite",

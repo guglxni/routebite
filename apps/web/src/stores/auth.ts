@@ -1,18 +1,51 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { getMe, getAuthUrl } from "../lib/api";
+import type { PortalRole } from "@routebite/shared/types";
+import {
+  getAuthUrl,
+  getMe,
+  getPortalInfo,
+  portalLogin,
+  portalLogout,
+  type PortalAccountHint,
+} from "../lib/api";
+
+function syncRbToken(token: string | null) {
+  if (token) localStorage.setItem("rb_token", token);
+  else localStorage.removeItem("rb_token");
+}
+
+export function homePathForRole(role: PortalRole | null | undefined): string {
+  if (role === "rider") return "/rider";
+  if (role === "admin") return "/admin";
+  if (role === "user") return "/dashboard";
+  return "/login";
+}
+
+interface AuthUser {
+  id: number;
+  role: PortalRole;
+  name?: string;
+  email?: string;
+  username?: string;
+  homePath?: string;
+}
 
 interface AuthState {
   token: string | null;
-  user: { id: number; name?: string; email?: string } | null;
+  user: AuthUser | null;
   hydrated: boolean;
+  sessionError: string | null;
+  portalHints: PortalAccountHint[];
   setToken: (t: string | null) => void;
   setUser: (u: AuthState["user"]) => void;
   setHydrated: () => void;
   login: () => Promise<void>;
-  devLogin: () => void;
+  loginWithCredentials: (username: string, password: string) => Promise<string>;
+  loadPortalHints: () => Promise<void>;
+  ensureSession: () => Promise<boolean>;
   logout: () => void;
-  fetchUser: () => Promise<void>;
+  fetchUser: () => Promise<boolean>;
 }
 
 export const useAuth = create<AuthState>()(
@@ -21,32 +54,90 @@ export const useAuth = create<AuthState>()(
       token: null,
       user: null,
       hydrated: false,
-      setToken: (token) => set({ token }),
+      sessionError: null,
+      portalHints: [],
+      setToken: (token) => {
+        syncRbToken(token);
+        set({ token, sessionError: null });
+      },
       setUser: (user) => set({ user }),
       setHydrated: () => set({ hydrated: true }),
       login: async () => {
         const { url } = await getAuthUrl();
         window.location.href = url;
       },
-      devLogin: () => {
-        const token = import.meta.env.VITE_DEV_SESSION_TOKEN ?? "routebite-dev-session";
-        localStorage.setItem("rb_token", token);
-        set({ token });
-        get().fetchUser();
+      loginWithCredentials: async (username, password) => {
+        const session = await portalLogin(username, password);
+        syncRbToken(session.token);
+        set({
+          token: session.token,
+          user: {
+            id: 0,
+            role: session.role,
+            name: session.name,
+            email: session.email,
+            username: session.username,
+            homePath: session.homePath,
+          },
+          sessionError: null,
+        });
+        await get().fetchUser();
+        return session.homePath;
+      },
+      loadPortalHints: async () => {
+        try {
+          const info = await getPortalInfo();
+          set({ portalHints: info.accounts });
+        } catch {
+          // Fallback if API down — still show local hints on Login page
+        }
+      },
+      ensureSession: async () => {
+        const { token } = get();
+        if (token) syncRbToken(token);
+        else {
+          const fromApi = localStorage.getItem("rb_token");
+          if (fromApi) set({ token: fromApi });
+        }
+        if (!get().token) return false;
+        return get().fetchUser();
       },
       logout: () => {
-        localStorage.removeItem("rb_token");
-        set({ token: null, user: null });
-        window.location.href = "/";
+        void portalLogout().catch(() => undefined);
+        syncRbToken(null);
+        set({ token: null, user: null, sessionError: null });
+        window.location.href = "/login";
       },
       fetchUser: async () => {
-        if (!get().token) return;
+        if (!get().token) return false;
+        syncRbToken(get().token);
         try {
           const me = await getMe();
-          set({ user: { id: me.id, name: me.name, email: me.email } });
-        } catch {
-          set({ token: null, user: null });
-          localStorage.removeItem("rb_token");
+          set({
+            user: {
+              id: me.id,
+              role: me.role,
+              name: me.name ?? undefined,
+              email: me.email ?? undefined,
+              username: me.username ?? undefined,
+              homePath: me.homePath ?? homePathForRole(me.role),
+            },
+            sessionError: null,
+          });
+          return true;
+        } catch (err) {
+          const status = (err as Error & { statusCode?: number }).statusCode;
+          if (status === 401 || status === 403) {
+            syncRbToken(null);
+            set({
+              token: null,
+              user: null,
+              sessionError: "Session expired. Please sign in again.",
+            });
+            return false;
+          }
+          set({ sessionError: (err as Error).message || "Could not reach API" });
+          return false;
         }
       },
     }),
@@ -56,7 +147,8 @@ export const useAuth = create<AuthState>()(
       onRehydrateStorage: () => (state) => {
         state?.setHydrated();
         if (state?.token) {
-          state.fetchUser();
+          syncRbToken(state.token);
+          void state.fetchUser();
         }
       },
     }

@@ -1,10 +1,23 @@
-import type { AlignmentStatus, AlignmentLevel, OrderStatus } from '@routebite/shared/types';
+import type {
+  AlignmentStatus,
+  AlignmentLevel,
+  OrderStatus,
+  LatLng,
+  InterceptReachability,
+} from '@routebite/shared/types';
+import { MAPS_FEATURES } from '@routebite/shared/constants';
+import { isPointInsideRiderIsochrone } from '../maps/reachability';
 
 export interface AlignmentInput {
   customerETA: number;   // seconds until customer reaches intercept
   riderETA: number;      // seconds until rider reaches intercept
   orderStatus: OrderStatus;
   prepTime?: number;     // seconds (estimated preparation time)
+  /** Live rider position — checked against dwell isochrone when available. */
+  riderPosition?: LatLng;
+  reachability?: InterceptReachability | null;
+  /** When customer ETA < rider budget, zone is shrinking — flag spatial risk. */
+  riderOutsideIsochrone?: boolean;
 }
 
 const ALIGNMENT_THRESHOLDS: Record<AlignmentLevel, { min: number; max: number }> = {
@@ -58,16 +71,39 @@ function levelToRecommendation(level: AlignmentLevel, delta: number): string | u
  * - Negative: customer arrives BEFORE rider (customer waiting)
  * - Near 0: perfect sync
  */
-export function computeAlignment(input: AlignmentInput): AlignmentStatus & { score: number } {
+export function computeAlignment(input: AlignmentInput): AlignmentStatus & {
+  score: number;
+  riderOutsideIsochrone?: boolean;
+} {
   const { customerETA, riderETA } = input;
   const delta = customerETA - riderETA;
-  const level = computeAlignmentLevel(delta);
+  let level = computeAlignmentLevel(delta);
 
   // Score: 0-100 normalized against fair threshold
   const abs = Math.abs(delta);
-  const score = Math.max(0, Math.min(100, Math.round(100 - (abs / 600) * 100)));
+  let score = Math.max(0, Math.min(100, Math.round(100 - (abs / 600) * 100)));
 
   const orderReadyTime = Math.max(0, riderETA - (input.prepTime ?? 0));
+
+  let riderOutsideIsochrone = input.riderOutsideIsochrone;
+  if (
+    riderOutsideIsochrone === undefined &&
+    MAPS_FEATURES.ISOCHRONE_TRACKING &&
+    input.riderPosition &&
+    input.reachability
+  ) {
+    const inside = isPointInsideRiderIsochrone(input.riderPosition, input.reachability);
+    if (inside === false) riderOutsideIsochrone = true;
+  }
+
+  let recommendation = levelToRecommendation(level, delta);
+  if (riderOutsideIsochrone) {
+    // Spatial miss demotes alignment
+    if (level === 'excellent' || level === 'good') level = 'fair';
+    score = Math.min(score, 55);
+    recommendation =
+      'Rider is outside the intercept reachability zone — delivery may miss your stop window.';
+  }
 
   return {
     status: level,
@@ -75,8 +111,9 @@ export function computeAlignment(input: AlignmentInput): AlignmentStatus & { sco
     customerETA,
     riderETA,
     orderReadyTime,
-    recommendation: levelToRecommendation(level, delta),
+    recommendation,
     score,
+    riderOutsideIsochrone,
   };
 }
 

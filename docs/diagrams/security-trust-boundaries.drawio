@@ -1,0 +1,76 @@
+<mxfile host="app.diagrams.net" agent="RouteBite" version="24.7.8" type="device">
+  <diagram id="sec" name="Security Trust Boundaries">
+    <mxGraphModel dx="1200" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="t" value="RouteBite — Security Architecture (OWASP-aligned trust boundaries)" style="text;html=1;fontStyle=1;fontSize=16;fontColor=#1e293b;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="640" height="28" as="geometry"/>
+        </mxCell>
+
+        <!-- Zone: Untrusted -->
+        <mxCell id="z1" value="UNTRUSTED — Internet / Browser" style="swimlane;startSize=28;fillColor=#fef2f2;strokeColor=#dc2626;fontStyle=1;rounded=1;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="70" width="280" height="220" as="geometry"/>
+        </mxCell>
+        <mxCell id="u1" value="React PWA&lt;br&gt;VITE_GOOGLE_MAPS_API_KEY&lt;br&gt;(HTTP referrer restricted)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fee2e2;strokeColor=#dc2626;fontSize=10;" vertex="1" parent="z1">
+          <mxGeometry x="30" y="50" width="220" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="u2" value="⚠ Never call Maps REST&lt;br&gt;from browser (CF1 CORS)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff7ed;strokeColor=#ea580c;fontSize=10;" vertex="1" parent="z1">
+          <mxGeometry x="30" y="140" width="220" height="50" as="geometry"/>
+        </mxCell>
+
+        <!-- Zone: API -->
+        <mxCell id="z2" value="TRUSTED — apps/api (Hono)" style="swimlane;startSize=28;fillColor=#eff6ff;strokeColor=#2563eb;fontStyle=1;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="380" y="70" width="360" height="400" as="geometry"/>
+        </mxCell>
+        <mxCell id="a1" value="&lt;b&gt;AuthN&lt;/b&gt; Bearer session&lt;br&gt;SHA-256 hash at rest · PKCE OAuth" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#2563eb;fontSize=10;" vertex="1" parent="z2">
+          <mxGeometry x="20" y="50" width="150" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="a2" value="&lt;b&gt;AuthZ&lt;/b&gt; ownership&lt;br&gt;requireRole · 404 deny" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#2563eb;fontSize=10;" vertex="1" parent="z2">
+          <mxGeometry x="190" y="50" width="150" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="a3" value="&lt;b&gt;Validation&lt;/b&gt;&lt;br&gt;Zod · Drizzle bound params" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#16a34a;fontSize=10;" vertex="1" parent="z2">
+          <mxGeometry x="20" y="130" width="150" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="a4" value="&lt;b&gt;Crypto&lt;/b&gt;&lt;br&gt;AES-256-GCM Swiggy tokens&lt;br&gt;ENCRYPTION_KEY required" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fae8ff;strokeColor=#a855f7;fontSize=10;" vertex="1" parent="z2">
+          <mxGeometry x="190" y="130" width="150" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="a5" value="&lt;b&gt;Rate limit&lt;/b&gt;&lt;br&gt;token-bucket · Redis optional" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#d97706;fontSize=10;" vertex="1" parent="z2">
+          <mxGeometry x="20" y="220" width="150" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="a6" value="&lt;b&gt;Headers&lt;/b&gt;&lt;br&gt;CSP · HSTS · XFO · nosniff" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f1f5f9;strokeColor=#64748b;fontSize=10;" vertex="1" parent="z2">
+          <mxGeometry x="190" y="220" width="150" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="a7" value="&lt;b&gt;SSRF posture&lt;/b&gt;&lt;br&gt;Outbound bases are constants&lt;br&gt;(GMP / Swiggy / NTES)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ecfdf5;strokeColor=#10b981;fontSize=10;" vertex="1" parent="z2">
+          <mxGeometry x="20" y="300" width="320" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- Zone: Secrets -->
+        <mxCell id="z3" value="SECRET STORE" style="swimlane;startSize=28;fillColor=#faf5ff;strokeColor=#7c3aed;fontStyle=1;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="800" y="70" width="240" height="180" as="geometry"/>
+        </mxCell>
+        <mxCell id="s1" value="Env / Lightsail secrets&lt;br&gt;ENCRYPTION_KEY&lt;br&gt;GOOGLE_MAPS_API_KEY&lt;br&gt;SWIGGY_* · REDIS_URL" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ede9fe;strokeColor=#7c3aed;fontSize=10;" vertex="1" parent="z3">
+          <mxGeometry x="20" y="50" width="200" height="90" as="geometry"/>
+        </mxCell>
+
+        <!-- Zone: Data -->
+        <mxCell id="z4" value="DATA AT REST" style="swimlane;startSize=28;fillColor=#f0fdf4;strokeColor=#16a34a;fontStyle=1;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="800" y="280" width="240" height="190" as="geometry"/>
+        </mxCell>
+        <mxCell id="d1" value="SQLite / libSQL&lt;br&gt;session_hash&lt;br&gt;access_token_encrypted&lt;br&gt;no plaintext Swiggy tokens" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=10;fillColor=#dcfce7;strokeColor=#16a34a;fontSize=10;" vertex="1" parent="z4">
+          <mxGeometry x="40" y="50" width="160" height="100" as="geometry"/>
+        </mxCell>
+
+        <!-- OWASP table note -->
+        <mxCell id="owasp" value="OWASP Top 10 mapping → apps/api/SECURITY_AUDIT.md&#xa;A01 ownership · A02 headers/CORS · A03 Zod/Drizzle · A04 AES-GCM · A05 rate limit · A07 PKCE · A10 fixed egress" style="shape=note;whiteSpace=wrap;html=1;size=16;fillColor=#fffbeb;strokeColor=#d97706;fontSize=10;align=left;spacing=8;" vertex="1" parent="1">
+          <mxGeometry x="40" y="340" width="300" height="130" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="e1" value="HTTPS + Bearer" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeWidth=2;strokeColor=#dc2626;endArrow=block;endFill=1;fontSize=9;" edge="1" parent="1" source="u1" target="a1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeWidth=1;dashed=1;strokeColor=#7c3aed;endArrow=block;endFill=1;" edge="1" parent="1" source="a4" target="s1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e3" value="SQL" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeWidth=2;strokeColor=#16a34a;endArrow=block;endFill=1;fontSize=9;" edge="1" parent="1" source="a3" target="d1"><mxGeometry relative="1" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

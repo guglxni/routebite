@@ -1,6 +1,6 @@
 import { eq, inArray } from 'drizzle-orm';
 import { getDb } from '@routebite/db/client';
-import { orders, trackingEvents } from '@routebite/db/schema';
+import { orders, trackingEvents, intercepts } from '@routebite/db/schema';
 import { SwiggyMCPClient } from '../swiggy/client';
 import { computeAlignmentScore, type AlignmentInput } from './alignment';
 import { loadCustomerContextForOrder } from './customer-context';
@@ -88,13 +88,25 @@ function normalizeTracking(raw: unknown): {
  */
 async function pollOrder(orderId: string, swiggyOrderId: string, server: 'food' | 'instamart', accessToken: string) {
   const client = new SwiggyMCPClient(accessToken);
+  const db = getDb();
+  const orderRow = await db.select().from(orders).where(eq(orders.id, orderId)).get();
+  const interceptId = orderRow?.interceptId;
+  let dropLat = 12.9716;
+  let dropLng = 77.5946;
+  if (interceptId) {
+    const point = await db.select().from(intercepts).where(eq(intercepts.id, interceptId)).get();
+    if (point) {
+      dropLat = point.lat;
+      dropLng = point.lng;
+    }
+  }
 
   let raw: unknown;
   try {
     const res =
       server === 'food'
         ? await client.trackFoodOrder({ orderId: swiggyOrderId })
-        : await client.trackInstamartOrder({ orderId: swiggyOrderId });
+        : await client.trackInstamartOrder({ orderId: swiggyOrderId, lat: dropLat, lng: dropLng });
 
     if (!res.success) {
       console.warn(`[tracking] Swiggy track failed for ${orderId}:`, res.error?.message);
@@ -123,7 +135,6 @@ async function pollOrder(orderId: string, swiggyOrderId: string, server: 'food' 
     alignmentScore = computeAlignmentScore(input);
   }
 
-  const db = getDb();
   await db.insert(trackingEvents).values({
     orderId,
     customerLat,

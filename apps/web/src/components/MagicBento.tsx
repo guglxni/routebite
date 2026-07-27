@@ -32,38 +32,38 @@ const MOBILE_BREAKPOINT = 768;
 const cardData: BentoCardProps[] = [
   {
     color: '#0a0a10',
-    title: 'Traffic-aware routes',
-    description: 'Google Routes API with live traffic, tolls, and polyline decoding.',
+    title: 'Live traffic routes',
+    description: 'Routes API with traffic and tolls.',
     label: 'Maps'
   },
   {
     color: '#0a0a10',
     title: 'Intercept scoring',
-    description: 'Dwell time, restaurant density, safety, and weather enrichment per stop.',
+    description: 'Dwell, density, and safety per stop.',
     label: 'Intelligence'
   },
   {
     color: '#0a0a10',
-    title: 'Swiggy Food & Instamart',
-    description: 'Browse menus and place orders at intercept points via MCP.',
+    title: 'Food & Instamart',
+    description: 'Order at intercepts via Swiggy MCP.',
     label: 'Ordering'
   },
   {
     color: '#0a0a10',
     title: 'Alignment tracking',
-    description: 'Rider ETA vs your arrival — scored and polled in real time.',
+    description: 'Rider ETA vs your arrival, live.',
     label: 'Sync'
   },
   {
     color: '#0a0a10',
-    title: 'Weather advisories',
-    description: 'Per-intercept weather warnings adjust timing and safety ratings.',
+    title: 'Outdoor alerts',
+    description: 'Weather and air quality at stops.',
     label: 'Weather'
   },
   {
     color: '#0a0a10',
-    title: 'Road-snapped stops',
-    description: 'Intercept pins snapped to roads for accurate map placement.',
+    title: 'Road-snapped pins',
+    description: 'Stops snapped to real roads.',
     label: 'Precision'
   }
 ];
@@ -516,7 +516,8 @@ const useMobileDetection = () => {
 };
 
 const MagicBento: React.FC<BentoProps> = ({
-  textAutoHide = true,
+  // Off by default — ellipsis on short cards looks broken
+  textAutoHide = false,
   enableStars = true,
   enableSpotlight = true,
   enableBorderGlow = true,

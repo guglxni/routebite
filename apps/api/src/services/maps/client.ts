@@ -25,12 +25,19 @@ import type {
   SpeedLimitsResponse,
   AddressValidationResponse,
   ComputeRouteOptions,
+  ComputeMatrixOptions,
 } from './types';
 import { routeCache, geocodeCache, matrixCache, roadsCache, addressValidationCache, makeRouteKey, makeMatrixKey } from './cache';
 import { PlacesInsightsClient } from './places';
+import { IsochronesClient, type GenerateIsochroneParams } from './isochrones';
+import {
+  attachReachabilityToPoints,
+  buildInterceptReachability,
+  type ReachabilityInput,
+} from './reachability';
 import { toGoogleLatLng, fromGoogleLatLng } from './google-latlng';
 import { withGoogleRetry } from './retry';
-import { MAPS_FEATURES } from '@routebite/shared/constants';
+import { MAPS_CONFIG, MAPS_FEATURES } from '@routebite/shared/constants';
 
 const API_KEY = process.env.GOOGLE_MAPS_API_KEY;
 
@@ -41,10 +48,12 @@ if (!API_KEY) {
 export class GoogleMapsClient {
   private apiKey: string;
   private places: PlacesInsightsClient;
+  private isochrones: IsochronesClient;
 
   constructor(apiKey = API_KEY) {
     this.apiKey = apiKey ?? '';
     this.places = new PlacesInsightsClient({ apiKey: this.apiKey });
+    this.isochrones = new IsochronesClient(this.apiKey);
   }
 
   countRestaurantsNear(point: LatLng, radiusM?: number) {
@@ -57,6 +66,29 @@ export class GoogleMapsClient {
 
   resolveRestaurantCount(point: LatLng, gridCounts: Map<string, number>) {
     return this.places.resolveCountForPoint(point, gridCounts);
+  }
+
+  listRestaurantLocationsNear(point: LatLng, radiusM: number) {
+    return this.places.listRestaurantLocationsNear(point, radiusM);
+  }
+
+  generateIsochrone(params: GenerateIsochroneParams) {
+    return this.isochrones.generate(params);
+  }
+
+  buildInterceptReachability(input: ReachabilityInput) {
+    return buildInterceptReachability(input, this.isochrones, this.places);
+  }
+
+  attachReachabilityToPoints<
+    T extends LatLng & { dwellTime: number; restaurantCount?: number },
+  >(points: T[], maxPoints?: number) {
+    return attachReachabilityToPoints(
+      points,
+      this.isochrones,
+      this.places,
+      maxPoints ?? MAPS_CONFIG.ISOCHRONE_MAX_PER_ANALYZE
+    );
   }
 
   // ══════════════════════════════════════════════════════════════════════════════
@@ -75,22 +107,43 @@ export class GoogleMapsClient {
     const originLL = typeof origin === 'string' ? await this.geocode(origin) : origin;
     const destLL = typeof destination === 'string' ? await this.geocode(destination) : destination;
 
-    const useExtras = opts?.extraComputations !== false && MAPS_FEATURES.ROUTES_EXTRA_COMPUTATIONS;
+    const intermediates = opts?.intermediates ?? [];
+    const optimizeWaypointOrder =
+      Boolean(opts?.optimizeWaypointOrder) && intermediates.length >= 2;
+
+    // Google: optimize_waypoint_order is not supported with TRAFFIC_AWARE_OPTIMAL
+    const routingPreference = optimizeWaypointOrder
+      ? (opts?.routingPreference === 'TRAFFIC_UNAWARE' ? 'TRAFFIC_UNAWARE' : 'TRAFFIC_AWARE')
+      : (opts?.routingPreference ?? mapped.routingPreference);
+
+    const useExtras =
+      !optimizeWaypointOrder &&
+      opts?.extraComputations !== false &&
+      MAPS_FEATURES.ROUTES_EXTRA_COMPUTATIONS;
+
     // Traffic-aware routing requires departureTime in the future (Google Routes API constraint)
     let departureTime = opts?.departureTime;
     if (
       !departureTime &&
       MAPS_FEATURES.DEPARTURE_TIME_ROUTING &&
-      mapped.routingPreference?.includes('TRAFFIC')
+      routingPreference?.includes('TRAFFIC') &&
+      routingPreference !== 'TRAFFIC_UNAWARE'
     ) {
       departureTime = new Date(Date.now() + 120_000);
     } else if (departureTime && departureTime.getTime() <= Date.now()) {
       departureTime = new Date(Date.now() + 120_000);
     }
 
-    const cacheKey = makeRouteKey(originLL, destLL, transportMode) +
+    const intermediateKey = intermediates
+      .map((p) => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`)
+      .join(';');
+    const cacheKey =
+      makeRouteKey(originLL, destLL, transportMode) +
       (departureTime ? `|${Math.floor(departureTime.getTime() / 300_000)}` : '') +
-      (useExtras ? '|extras' : '');
+      (useExtras ? '|extras' : '') +
+      (routingPreference ? `|rp:${routingPreference}` : '') +
+      (intermediates.length ? `|via:${intermediateKey}` : '') +
+      (optimizeWaypointOrder ? '|optWP' : '');
 
     if (!departureTime) {
       const cached = routeCache.get(cacheKey);
@@ -101,11 +154,19 @@ export class GoogleMapsClient {
       origin: { location: { latLng: toGoogleLatLng(originLL) } },
       destination: { location: { latLng: toGoogleLatLng(destLL) } },
       travelMode: mapped.travelMode,
-      ...(mapped.routingPreference ? { routingPreference: mapped.routingPreference } : {}),
+      ...(routingPreference ? { routingPreference } : {}),
       units: 'METRIC',
       languageCode: 'en-IN',
       ...(departureTime ? { departureTime: departureTime.toISOString() } : {}),
       ...(useExtras ? { extraComputations: [...DEFAULT_ROUTE_EXTRA_COMPUTATIONS] } : {}),
+      ...(intermediates.length > 0
+        ? {
+            intermediates: intermediates.map((p) => ({
+              location: { latLng: toGoogleLatLng(p) },
+            })),
+          }
+        : {}),
+      ...(optimizeWaypointOrder ? { optimizeWaypointOrder: true } : {}),
       ...(opts?.avoidTolls || opts?.avoidHighways
         ? {
             routeModifiers: {
@@ -116,7 +177,10 @@ export class GoogleMapsClient {
         : {}),
     };
 
-    const fieldMask = useExtras ? ROUTES_FIELD_MASK : ROUTES_FIELD_MASK_BASE;
+    const fieldMaskBase = useExtras ? ROUTES_FIELD_MASK : ROUTES_FIELD_MASK_BASE;
+    const fieldMask = optimizeWaypointOrder
+      ? `${fieldMaskBase},routes.optimizedIntermediateWaypointIndex`
+      : fieldMaskBase;
 
     const data = await withGoogleRetry(async () => {
       const res = await fetch(GOOGLE_MAPS_API_BASE, {
@@ -140,17 +204,18 @@ export class GoogleMapsClient {
     const route = data.routes[0];
     if (!route) throw new Error('No route found');
 
-    const duration = parseInt(route.duration.replace('s', ''), 10);
+    const duration = parseInt((route.duration ?? '0s').replace('s', ''), 10);
+    const encodedPolyline = route.polyline?.encodedPolyline ?? '';
 
     const legAdvisory = route.legs?.[0]?.travelAdvisory;
     const routeAdvisory = route.travelAdvisory ?? legAdvisory;
 
     const result: JourneyRoute = {
-      polylinePoints: this.decodePolyline(route.polyline.encodedPolyline),
-      encodedPolyline: route.polyline.encodedPolyline,
-      distanceMeters: route.distanceMeters,
+      polylinePoints: encodedPolyline ? this.decodePolyline(encodedPolyline) : [],
+      encodedPolyline,
+      distanceMeters: route.distanceMeters ?? 0,
       durationSeconds: duration,
-      steps: route.legs.flatMap(l => l.steps.map(normalizeRouteStep)),
+      steps: (route.legs ?? []).flatMap((l) => (l.steps ?? []).map(normalizeRouteStep)),
       travelAdvisory: routeAdvisory
         ? {
             speedReadingIntervals: routeAdvisory.speedReadingIntervals,
@@ -158,6 +223,7 @@ export class GoogleMapsClient {
           }
         : undefined,
       hasTolls: Boolean(routeAdvisory?.tollInfo),
+      optimizedIntermediateWaypointIndex: route.optimizedIntermediateWaypointIndex,
     };
 
     routeCache.set(cacheKey, result);
@@ -171,19 +237,35 @@ export class GoogleMapsClient {
   async computeRouteMatrix(
     origins: LatLng[],
     destinations: LatLng[],
-    transportMode: TransportMode
+    transportMode: TransportMode,
+    opts?: ComputeMatrixOptions
   ): Promise<TravelTimeMatrix> {
     if (origins.length === 0 || destinations.length === 0) {
       return { origins, destinations, durations: [], distances: [] };
     }
 
-    // Check cache
-    const cacheKey = makeMatrixKey(origins, destinations, transportMode);
-    const cached = matrixCache.get(cacheKey);
-    if (cached) return cached as TravelTimeMatrix;
-
     const mapped = TRANSPORT_MODE_MAP[transportMode];
     if (!mapped) throw new Error(`Unsupported transport mode: ${transportMode}`);
+
+    let departureTime = opts?.departureTime;
+    if (
+      !departureTime &&
+      MAPS_FEATURES.DEPARTURE_TIME_ROUTING &&
+      mapped.routingPreference?.includes('TRAFFIC')
+    ) {
+      departureTime = new Date(Date.now() + 120_000);
+    } else if (departureTime && departureTime.getTime() <= Date.now()) {
+      departureTime = new Date(Date.now() + 120_000);
+    }
+
+    const departureBucket = departureTime
+      ? Math.floor(departureTime.getTime() / 120_000)
+      : undefined;
+
+    // Check cache
+    const cacheKey = makeMatrixKey(origins, destinations, transportMode, departureBucket);
+    const cached = matrixCache.get(cacheKey);
+    if (cached) return cached as TravelTimeMatrix;
 
     const body: RouteMatrixRequest = {
       origins: origins.map(o => ({ waypoint: { location: { latLng: toGoogleLatLng(o) } } })),
@@ -192,6 +274,7 @@ export class GoogleMapsClient {
       ...(mapped.routingPreference ? { routingPreference: mapped.routingPreference } : {}),
       units: 'METRIC',
       languageCode: 'en-IN',
+      ...(departureTime ? { departureTime: departureTime.toISOString() } : {}),
     };
 
     const res = await fetch(GOOGLE_ROUTE_MATRIX_BASE, {
@@ -238,8 +321,18 @@ export class GoogleMapsClient {
   /**
    * Convenience: get travel time from a single origin to a single destination.
    */
-  async getTravelTime(origin: LatLng, destination: LatLng, transportMode: TransportMode): Promise<number> {
-    const matrix = await this.computeRouteMatrix([origin], [destination], transportMode);
+  async getTravelTime(
+    origin: LatLng,
+    destination: LatLng,
+    transportMode: TransportMode,
+    opts?: ComputeMatrixOptions
+  ): Promise<number> {
+    const matrix = await this.computeRouteMatrix(
+      [origin],
+      [destination],
+      transportMode,
+      opts
+    );
     return matrix.durations[0]?.[0] ?? 0;
   }
 

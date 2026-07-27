@@ -23,6 +23,9 @@ export interface PlaceOrderInput {
   }>;
   paymentMethod?: string;
   couponCode?: string;
+  /** Optional — defaults from users table / portal profile */
+  userName?: string;
+  userPhone?: string;
 }
 
 export interface PlaceOrderResult {
@@ -36,6 +39,22 @@ export interface PlaceOrderResult {
   riderBrief?: string;
   timing: TimingType;
   autoPlaceAt?: string; // ISO timestamp if timing == 'auto'
+  mealHint?: {
+    slot: string;
+    label: string;
+    primaryQuery: string;
+    hint: string;
+    queries: string[];
+  };
+  haltGate?: {
+    ok: boolean;
+    severity: string;
+    message: string;
+    recommendation?: string;
+    slackSeconds: number;
+    requiredSeconds: number;
+    dwellSeconds: number;
+  };
 }
 
 export interface GeneratedAddress {
@@ -43,6 +62,11 @@ export interface GeneratedAddress {
   label: string;
   lat: number;
   lng: number;
+  addressLine?: string;
+  addressLine2?: string;
+  city?: string;
+  postalCode?: string;
+  locality?: string;
 }
 
 export interface TimingCalculation {

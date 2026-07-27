@@ -19,6 +19,18 @@ import { useTracking } from "../stores/tracking";
 import CountUp from "~/components/CountUp";
 import SpotlightCard from "~/components/SpotlightCard";
 import { JourneyMap } from "~/components/map/JourneyMap";
+import { LiveLocationPanel } from "~/components/journey/LiveLocationPanel";
+import { patchJourneyTelemetry } from "~/lib/api";
+import type { GPSPosition } from "@routebite/shared/types";
+import {
+  DeferredPlaceCard,
+  DualClockPanel,
+  ReInterceptBanner,
+} from "~/components/fusion/FusionPanels";
+import { useNavigate } from "react-router-dom";
+import { executeReIntercept } from "~/lib/api";
+import { toast } from "sonner";
+import { useCart } from "~/stores/cart";
 
 function formatETA(seconds?: number): string {
   if (seconds === undefined || seconds === null) return "—";
@@ -37,6 +49,8 @@ function statusLabel(status: string): string {
 }
 
 export default function TrackOrder() {
+  const navigate = useNavigate();
+  const cart = useCart();
   const { orderId } = useParams<{ orderId: string }>();
   const {
     snapshot,
@@ -51,6 +65,7 @@ export default function TrackOrder() {
   } = useTracking();
   const mapRef = useRef<HTMLDivElement>(null);
   const [showRaw, setShowRaw] = useState(false);
+  const [shareLocation, setShareLocation] = useState(false);
 
   useEffect(() => {
     if (!orderId) return;
@@ -82,7 +97,41 @@ export default function TrackOrder() {
   const customerContext = snapshot?.customerContext;
   const customerPosition = customerContext?.customerPosition;
   const interceptPoint = customerContext?.intercept;
-  const hasData = !!(snapshot && snapshot.swiggyOrderId !== null);
+  const journeyId = customerContext?.journeyId;
+  const hasData = !!(snapshot && (snapshot.swiggyOrderId !== null || snapshot.deferred));
+  const dualClock = snapshot?.dualClock;
+  const reIntercept = snapshot?.reIntercept;
+  const deferred = snapshot?.deferred;
+
+  useEffect(() => {
+    if (customerContext?.liveLocationSharing) {
+      setShareLocation(true);
+    }
+  }, [customerContext?.liveLocationSharing]);
+
+  const onTrackLocation = async (position: GPSPosition) => {
+    if (!journeyId) return;
+    try {
+      await patchJourneyTelemetry(journeyId, {
+        liveLocation: position,
+        liveLocationSharing: true,
+      });
+      if (orderId) fetchTrack(orderId);
+    } catch {
+      // Non-blocking — next poll will still use last known if PATCH fails
+    }
+  };
+
+  const onShareToggle = async (enabled: boolean) => {
+    setShareLocation(enabled);
+    if (!journeyId) return;
+    try {
+      await patchJourneyTelemetry(journeyId, { liveLocationSharing: enabled });
+      if (orderId) fetchTrack(orderId);
+    } catch {
+      // ignore
+    }
+  };
 
   // Render live map with rider + customer + intercept
   const renderLiveMap = () => {
@@ -125,6 +174,8 @@ export default function TrackOrder() {
               ]
             : []
         }
+        selectedInterceptId={intercept?.id}
+        showArcs={false}
         heightClassName="h-full min-h-[320px]"
         className="h-full border-0 rounded-none"
       />
@@ -143,10 +194,11 @@ export default function TrackOrder() {
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <div>
-            <h1 className="text-2xl font-extrabold">Live Tracking</h1>
-            <p className="text-sm text-text-muted">
-              Order #{orderId?.slice(0, 8)}
-            </p>
+            <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-amber">Tracking</p>
+            <h1 className="font-display text-2xl leading-tight tracking-tight text-text-primary md:text-[1.85rem]">
+              Live on the map
+            </h1>
+            <p className="text-sm text-text-muted">Order #{orderId?.slice(0, 8)}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -187,6 +239,34 @@ export default function TrackOrder() {
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {deferred && !snapshot?.swiggyOrderId && (
+            <div className="lg:col-span-3 track-card">
+              <DeferredPlaceCard deferred={deferred} />
+            </div>
+          )}
+          <div className="lg:col-span-3 track-card flex flex-col gap-3">
+            <DualClockPanel dualClock={dualClock} alignment={alignment} />
+            <ReInterceptBanner
+              suggestion={reIntercept ?? null}
+              onSwitch={(id) => {
+                if (!orderId) return;
+                void (async () => {
+                  try {
+                    const res = await executeReIntercept(orderId, {
+                      newInterceptId: id,
+                      flushCart: true,
+                    });
+                    cart.clearCart();
+                    cart.setInterceptId(id);
+                    toast.success(res.message);
+                    navigate(`/menu?interceptsId=${id}&server=food`);
+                  } catch (err) {
+                    toast.error(err instanceof Error ? err.message : "Re-intercept failed");
+                  }
+                })();
+              }}
+            />
+          </div>
           {/* Main map card */}
           <div className="track-card lg:col-span-2 glass rounded-2xl overflow-hidden border border-border-subtle">
             <div className="p-4 border-b border-border-subtle flex items-center justify-between">
@@ -231,12 +311,27 @@ export default function TrackOrder() {
                   <div className="text-xs text-text-secondary leading-relaxed">
                     {alignment.recommendation}
                   </div>
+                  {alignment.riderOutsideIsochrone && (
+                    <div className="mt-2 rounded-lg border border-rose/30 bg-rose/10 px-2.5 py-1.5 text-[11px] font-medium text-rose">
+                      Rider is outside the delivery reachability zone for this intercept.
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="text-sm text-text-muted">Computing...</div>
               )}
             </SpotlightCard>
             </div>
+
+            {journeyId && (
+              <div className="track-card">
+                <LiveLocationPanel
+                  enabled={shareLocation}
+                  onEnabledChange={onShareToggle}
+                  onLocation={onTrackLocation}
+                />
+              </div>
+            )}
 
             {/* ETAs */}
             <div className="track-card glass rounded-2xl p-4 border border-border-subtle">
@@ -245,9 +340,20 @@ export default function TrackOrder() {
                 <span className="text-xs font-bold uppercase tracking-wider text-text-muted">ETAs</span>
               </div>
               <div className="space-y-2.5">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <span className="text-sm text-text-secondary">Your arrival</span>
-                  <span className="text-sm font-bold text-sky">{formatETA(snapshot?.customerETA)}</span>
+                  <div className="flex flex-col items-end gap-0.5">
+                    <span className="text-sm font-bold text-sky">{formatETA(snapshot?.customerETA)}</span>
+                    {customerContext?.etaFromLiveGps ? (
+                      <span className="rounded-md border border-emerald/30 bg-emerald/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald">
+                        Live GPS · traffic
+                      </span>
+                    ) : (
+                      <span className="text-[9px] font-medium uppercase tracking-wider text-text-muted">
+                        Schedule / last known
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-text-secondary">Rider arrival</span>

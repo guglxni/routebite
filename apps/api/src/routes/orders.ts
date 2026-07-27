@@ -4,14 +4,16 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { eq, desc } from 'drizzle-orm';
 import { getDb } from '@routebite/db/client';
-import { orders, trackingEvents } from '@routebite/db/schema';
+import { orders, trackingEvents, intercepts } from '@routebite/db/schema';
 import { placeOrder } from '../services/order/placement';
 import { SwiggyMCPClient } from '../services/swiggy/client';
-import { computeAlignment } from '../services/tracking/alignment';
 import { startPolling } from '../services/tracking/poller';
 import { loadCustomerContextForOrder } from '../services/tracking/customer-context';
 import { RouteBiteError } from '../middleware/error-handler';
 import { denyAccess } from '../lib/access-control';
+import { buildDualClock } from '../services/fusion/dual-clock';
+import { suggestReIntercept } from '../services/fusion/re-intercept';
+import { planHopPacking } from '../services/fusion/hop-packing';
 
 const app = new Hono();
 
@@ -104,6 +106,12 @@ app.get('/:id/track', async (c) => {
   const order = await requireOrderOwnership(id, user.id, c);
 
   if (!order.swiggyOrderId) {
+    let haltGate = null;
+    try {
+      haltGate = order.haltGateJson ? JSON.parse(order.haltGateJson) : null;
+    } catch {
+      haltGate = null;
+    }
     return c.json({
       success: true,
       data: {
@@ -111,6 +119,14 @@ app.get('/:id/track', async (c) => {
         status: order.status,
         swiggyOrderId: null,
         tracking: null,
+        deferred: {
+          timingType: order.timingType,
+          autoPlaceAt: order.autoPlaceAt?.toISOString?.() ?? order.autoPlaceAt ?? null,
+          placeAttempts: order.placeAttempts ?? 0,
+          lastPlaceError: order.lastPlaceError ?? null,
+          mealQueryHint: order.mealQueryHint ?? null,
+          haltGate,
+        },
       },
     });
   }
@@ -119,10 +135,28 @@ app.get('/:id/track', async (c) => {
   startPolling(id, order.swiggyOrderId, order.server as 'food' | 'instamart', token);
 
   const client = new SwiggyMCPClient(token);
+  let dropLat = 12.9716;
+  let dropLng = 77.5946;
+  if (order.interceptId) {
+    const point = await getDb()
+      .select()
+      .from(intercepts)
+      .where(eq(intercepts.id, order.interceptId))
+      .get();
+    if (point) {
+      dropLat = point.lat;
+      dropLng = point.lng;
+    }
+  }
+
   const trackRes =
     order.server === 'food'
       ? await client.trackFoodOrder({ orderId: order.swiggyOrderId })
-      : await client.trackInstamartOrder({ orderId: order.swiggyOrderId });
+      : await client.trackInstamartOrder({
+          orderId: order.swiggyOrderId,
+          lat: dropLat,
+          lng: dropLng,
+        });
 
   if (!trackRes.success) {
     throw new RouteBiteError('SWIGGY_ERROR', trackRes.error?.message ?? 'Tracking failed', 502);
@@ -140,13 +174,39 @@ app.get('/:id/track', async (c) => {
   const customerContext = await loadCustomerContextForOrder(id);
   const customerETA = customerContext?.customerETA ?? swiggyCustomerETA;
 
-  // Compute alignment
-  let alignmentStatus = null;
-  if (customerETA !== undefined && riderETA !== undefined) {
-    alignmentStatus = computeAlignment({
-      customerETA,
-      riderETA,
-      orderStatus: order.status,
+  const dualClock = await buildDualClock({
+    customerETA,
+    riderETA,
+    orderStatus: order.status,
+    customerPosition: customerContext?.customerPosition ?? null,
+    riderPosition:
+      riderLat !== undefined && riderLng !== undefined
+        ? { lat: riderLat, lng: riderLng }
+        : null,
+    intercept: { lat: dropLat, lng: dropLng },
+    swiggyDistanceKm:
+      typeof raw.distanceKm === 'number' ? (raw.distanceKm as number) : null,
+  });
+
+  let reIntercept = null;
+  if (order.journeyId && order.interceptId) {
+    const siblings = await getDb()
+      .select()
+      .from(intercepts)
+      .where(eq(intercepts.journeyId, order.journeyId))
+      .all();
+    reIntercept = suggestReIntercept({
+      currentInterceptId: order.interceptId,
+      alignmentLevel: dualClock.alignment?.status,
+      riderOutsideIsochrone: dualClock.alignment?.riderOutsideIsochrone,
+      candidates: siblings.map((s) => ({
+        id: s.id,
+        name: s.name,
+        score: s.score,
+        estimatedDwellTime: s.estimatedDwellTime,
+        restaurantCount: s.restaurantCount,
+        reachableRestaurantCount: s.reachableRestaurantCount,
+      })),
     });
   }
 
@@ -159,8 +219,8 @@ app.get('/:id/track', async (c) => {
       orderId: id,
       status: order.status,
       swiggyOrderId: order.swiggyOrderId,
-      customerETA,
-      riderETA,
+      customerETA: dualClock.customerETA,
+      riderETA: dualClock.riderETA,
       riderPosition:
         riderLat !== undefined && riderLng !== undefined
           ? { lat: riderLat, lng: riderLng }
@@ -171,8 +231,141 @@ app.get('/:id/track', async (c) => {
             riderBrief: deliveryInstructions ?? customerContext.riderBrief,
           }
         : null,
-      alignmentStatus,
+      alignmentStatus: dualClock.alignment,
+      dualClock,
+      reIntercept,
       ...(process.env.NODE_ENV !== 'production' ? { raw } : {}),
+    },
+  });
+});
+
+const HopPackSchema = z.object({
+  lines: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      priceRupees: z.number(),
+      quantity: z.number().int().positive(),
+      server: z.enum(['food', 'instamart']),
+    })
+  ),
+});
+
+// POST /api/v1/orders/hop-pack — cap-aware multi-hop cart plan
+app.post('/hop-pack', zValidator('json', HopPackSchema), async (c) => {
+  const { lines } = c.req.valid('json');
+  return c.json({ success: true, data: planHopPacking(lines) });
+});
+
+const MultiHopSchema = z.object({
+  journeyId: z.string().min(1),
+  hops: z
+    .array(
+      z.object({
+        interceptId: z.string().min(1),
+        server: z.enum(['food', 'instamart']),
+        timing: z.enum(['now', 'auto']).default('auto'),
+        restaurantId: z.string().optional(),
+        foodItems: PlaceOrderSchema.shape.foodItems,
+        productItems: PlaceOrderSchema.shape.productItems,
+        paymentMethod: z.string().optional(),
+        couponCode: z.string().optional(),
+      })
+    )
+    .min(1)
+    .max(5),
+});
+
+// POST /api/v1/orders/multi-hop — place/queue one order per intercept hop
+app.post('/multi-hop', zValidator('json', MultiHopSchema), async (c) => {
+  const body = c.req.valid('json');
+  const token = c.get('accessToken');
+  const user = c.get('user');
+  const results = [];
+  for (const hop of body.hops) {
+    const result = await placeOrder(
+      {
+        ...hop,
+        journeyId: body.journeyId,
+        userId: user.id,
+        timing: hop.timing ?? 'auto',
+      },
+      token
+    );
+    if (result.swiggyOrderId) {
+      startPolling(result.orderId, result.swiggyOrderId, hop.server, token);
+    }
+    results.push(result);
+  }
+  return c.json({ success: true, data: { orders: results, hopCount: results.length } });
+});
+
+const ReInterceptSchema = z.object({
+  newInterceptId: z.string().min(1),
+  flushCart: z.boolean().optional().default(true),
+});
+
+// POST /api/v1/orders/:id/re-intercept — mid-journey switch dropoff + flush Swiggy cart
+app.post('/:id/re-intercept', zValidator('json', ReInterceptSchema), async (c) => {
+  const id = c.req.param('id');
+  const { newInterceptId, flushCart } = c.req.valid('json');
+  const token = c.get('accessToken');
+  const user = c.get('user');
+  const db = getDb();
+  const order = await requireOrderOwnership(id, user.id, c);
+
+  if (order.swiggyOrderId && !['pending', 'confirmed'].includes(order.status)) {
+    throw new RouteBiteError(
+      'VALIDATION_ERROR',
+      'Cannot re-intercept after kitchen/rider handoff',
+      400
+    );
+  }
+
+  const point = await db.select().from(intercepts).where(eq(intercepts.id, newInterceptId)).get();
+  if (!point || (order.journeyId && point.journeyId !== order.journeyId)) {
+    throw new RouteBiteError('VALIDATION_ERROR', 'Intercept not on this journey', 400);
+  }
+
+  let flushed = false;
+  if (flushCart) {
+    try {
+      const client = new SwiggyMCPClient(token);
+      if (order.server === 'food') {
+        await client.flushFoodCart();
+        flushed = true;
+      } else {
+        await client.clearInstamartCart();
+        flushed = true;
+      }
+    } catch {
+      flushed = false;
+    }
+  }
+
+  // Pending deferred orders can retarget; confirmed Swiggy orders keep ID but note the switch
+  await db
+    .update(orders)
+    .set({
+      interceptId: newInterceptId,
+      notes: `${order.notes ?? ''}\n\nRe-intercept → ${newInterceptId} at ${new Date().toISOString()}`,
+      lastPlaceError: order.swiggyOrderId
+        ? 'Re-intercept after place — track dropoff updated; rider brief may need refresh'
+        : order.lastPlaceError,
+    })
+    .where(eq(orders.id, id));
+
+  return c.json({
+    success: true,
+    data: {
+      orderId: id,
+      previousInterceptId: order.interceptId,
+      newInterceptId,
+      flushed,
+      actions: ['create_address', 're_search', ...(flushed ? ['flush_cart'] : [])],
+      message: flushed
+        ? 'Cart flushed. Pick kitchen again at the new intercept.'
+        : 'Intercept updated. Re-search catalog at the new stop.',
     },
   });
 });
