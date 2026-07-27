@@ -1,4 +1,5 @@
 # Keep runtime + GitHub Actions deps patched (supply-chain DevSecOps).
+# Major bumps are reviewed manually — auto PRs are limited to patch/minor.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -11,4 +12,9 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 8
+    open-pull-requests-limit: 5
+    versioning-strategy: increase
+    ignore:
+      # Major upgrades need coordinated monorepo testing (Zod 4, Vite 8, etc.).
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
