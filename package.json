@@ -31,7 +31,7 @@
     "ci:local": "bun run test:unit && bunx tsc --noEmit -p apps/web && bun run check:maps && gitleaks detect --no-banner"
   },
   "devDependencies": {
-    "concurrently": "^9.0.0",
+    "concurrently": "^10.0.4",
     "typescript": "^5.6.0",
     "eslint": "^9.0.0"
   }
