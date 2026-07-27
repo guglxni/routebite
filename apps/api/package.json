@@ -19,7 +19,7 @@
     "@routebite/db": "workspace:*",
     "@routebite/shared": "workspace:*",
     "drizzle-orm": "^0.36.0",
-    "hono": "^4.6.0",
+    "hono": "^4.12.32",
     "zod": "^3.24.0"
   },
   "devDependencies": {
