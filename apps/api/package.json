@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.13.0",
-    "@hono/zod-validator": "^0.7.6",
+    "@hono/zod-validator": "^0.9.0",
     "@routebite/db": "workspace:*",
     "@routebite/shared": "workspace:*",
     "drizzle-orm": "^0.36.0",
