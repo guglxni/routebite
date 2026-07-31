@@ -160,11 +160,14 @@ bun run test:api:integration  # Maps integration (needs GOOGLE_MAPS_API_KEY)
 RUN_E2E=1 bun run test:api:e2e   # Full flow (API + mock Swiggy running)
 bun run test:web
 RUN_WEB_INTEGRATION=1 bun run test:web:integration
-bun run typecheck
+bun run typecheck             # all packages (uses workspace TypeScript ~5.9)
 bun run check:maps
 bun run ci:local
-bun run build
+bun run build                 # apps/web → dist/ (Vite + PWA)
+bun run build:all             # typecheck + unit + maps + web build
 ```
+
+Production web artifact: `apps/web/dist` (required before `Dockerfile.runtime` image build).
 
 ---
 
